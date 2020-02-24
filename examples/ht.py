@@ -4,11 +4,11 @@ import hothouse.blaster as hb
 import hothouse.scene as hs
 import hothouse.sun_calc as sc
 import numpy as np
-from hothouse.datasets import PLANTS 
+from hothouse.datasets import PLANTS
 
 def triangle_hits(o):
     triangle_hit_counts = []
-    
+
     for i, component in enumerate(s.components):
         triangle_hit_counts.append(np.bincount(o['primID'][o['geomID'] == i],
                                            minlength = component.triangles.shape[0]))
@@ -23,9 +23,7 @@ def triangle_hits(o):
     return triangle_hit_counts
 
 
-
-
-center = np.array([0.0, -100.0, 200])
+center = np.array([0.0, 0.0, 500])
 forward = np.array([0.0, 1.0, 0.0])
 up = np.array([0.0, 0.0, 1.0])
 
@@ -49,36 +47,6 @@ hours_before_decimal = "9:45"
 hour_of_day = int(hh) + (int(mm) * (1 / 60))
 #print("hour_of_day: ", hour_of_day)
 
-#rotation
-theta = np.radians(30)
-# in normal coordinates; y here
-y = np.array(( (np.cos(theta), -np.sin(theta), 0),
-               (np.sin(theta), np.cos(theta), 0),
-               (0, 0, 1) ))
-x = np.array(( (1, 0, 0),
-               (0, np.cos(theta), -np.sin(theta)),
-               (0, np.sin(theta), np.cos(theta)) ))
-#y in normal coordinates; z here
-z = np.array(( (np.cos(theta), 0, np.sin(theta)),
-               (0, 1, 0),
-               (-np.sin(theta), 0, np.cos(theta)) ))
-print(x)
-print(y)
-print(z)
-
-rotateX = x.dot(forward)
-rotateY = y.dot(forward)
-rotateZ = z.dot(forward)
-print(rotateX)
-print(rotateY)
-print(rotateZ)
-
-
-sc.sun_calcs(latitude, longitude, standard_meridian, day_of_year, hour_of_day)
-
-#rb = hb.OrthographicRayBlaster(center, forward, up, width, height, Npix, Npix)
-rb = hb.OrthographicRayBlaster(center, rotateX, up, width, height, Npix, Npix)
-
 fname = PLANTS.fetch('fullSoy_2-12a.ply')
 #fname = PLANTS.fetch('ambientFieldPly_10-29a.0001.ply')
 #fname = 'ambientFieldPly_10-29a.0001.ply'
@@ -89,38 +57,23 @@ p1 = hothouse.plant_model.PlantModel.from_ply(fname)
 s = hs.Scene()
 s.add_component(p1)
 #s.add_component(p2)
+sc.sun_calcs(latitude, longitude, standard_meridian, day_of_year, hour_of_day)
 
-N = 1
-import time
-t1 = time.time()
-for i in range(N):
+for rotation in (0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 359):
+    forward = np.array([0.0, 0.0, -1.0])
+    theta = np.radians(rotation)
+    # in normal coordinates; y here
+    up = np.array( [ np.cos(theta), np.sin(theta), 0.0] )
+    #up = up / np.dot(up, up)
+    print(rotation, up)
+
+    #rb = hb.OrthographicRayBlaster(center, forward, up, width, height, Npix, Npix)
+    rb = hb.OrthographicRayBlaster(center, forward, up, width, height, Npix, Npix)
+
     o = rb.cast_once(s)
-#o = rb.cast_once(s, True)
-t2 = time.time()
-print("Each takes {} seconds".format((t2 - t1) / N))
-
-#triangle_hits(o)
-
-#If a ray hits the instance, the geomID and primID members of the hit are set to the geometry ID and primitive ID of the hit primitive in the instanced scene, and the instID member of the hit is set to the geometry ID of the instance in the top-level scene.
-
-#plt.plot(triangle_hit_counts[0])
-#plt.plot(triangle_hit_counts[1])
-#plt.savefig("hi_1.png")
-
-o = {'tfar': o}
-print(o)
-
-#primIDs = o['tfar']['primID']
-#print(primIDs)
-
-#each triangle that gets hit by a ray at least once
-#unique_primIDs = np.unique(o['tfar']['primID'])
-#print(unique_primIDs)
-#for i in unique_primIDs:
-    #print(i)
-
-plt.clf()
-o['tfar'][o['tfar'] > 1e36] = np.nan
-plt.imshow(o['tfar'].reshape((Npix, Npix), order='F'), origin='lower')
-plt.colorbar()
-plt.savefig("hi.png")
+    o = {'tfar': o}
+    o['tfar'][o['tfar'] > 1e36] = np.nan
+    plt.clf()
+    plt.imshow(o['tfar'].reshape((Npix, Npix), order='F'), origin='lower')
+    plt.colorbar()
+    plt.savefig("hi-{0:03d}.png".format(rotation))
