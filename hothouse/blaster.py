@@ -31,6 +31,7 @@ class OrthographicRayBlaster(RayBlaster):
         self.height = height
         self.nx = nx
         self.ny = ny
+        
         # here origin is not the center, but the bottom left
         self._directions = np.zeros((nx, ny, 3), dtype="f4")
         self._directions[:] = self.forward[None, None, :]

@@ -14,11 +14,11 @@ def triangle_hits(o):
                                            minlength = component.triangles.shape[0]))
 
     count = 0
-    print("triangle_hit_counts[0]: ", triangle_hit_counts[0])
-    for element in triangle_hit_counts:
-        for i in element:
-            print("triangle_hit_counts[", count, "]: ", i)
-            count += 1
+    #print("triangle_hit_counts[0]: ", triangle_hit_counts[0])
+    #for element in triangle_hit_counts:
+    #    for i in element:
+    #        print("triangle_hit_counts[", count, "]: ", i)
+    #        count += 1
 
     return triangle_hit_counts
 
@@ -27,7 +27,6 @@ def triangle_hits(o):
 
 center = np.array([0.0, -100.0, 200])
 forward = np.array([0.0, 1.0, 0.0])
-#up = np.array([0.0, 0.0, 1.0])
 up = np.array([0.0, 0.0, 1.0])
 
 Npix = 1024
@@ -50,9 +49,35 @@ hours_before_decimal = "9:45"
 hour_of_day = int(hh) + (int(mm) * (1 / 60))
 #print("hour_of_day: ", hour_of_day)
 
+#rotation
+theta = np.radians(30)
+# in normal coordinates; y here
+y = np.array(( (np.cos(theta), -np.sin(theta), 0),
+               (np.sin(theta), np.cos(theta), 0),
+               (0, 0, 1) ))
+x = np.array(( (1, 0, 0),
+               (0, np.cos(theta), -np.sin(theta)),
+               (0, np.sin(theta), np.cos(theta)) ))
+#y in normal coordinates; z here
+z = np.array(( (np.cos(theta), 0, np.sin(theta)),
+               (0, 1, 0),
+               (-np.sin(theta), 0, np.cos(theta)) ))
+print(x)
+print(y)
+print(z)
+
+rotateX = x.dot(forward)
+rotateY = y.dot(forward)
+rotateZ = z.dot(forward)
+print(rotateX)
+print(rotateY)
+print(rotateZ)
+
+
 sc.sun_calcs(latitude, longitude, standard_meridian, day_of_year, hour_of_day)
 
-rb = hb.OrthographicRayBlaster(center, forward, up, width, height, Npix, Npix)
+#rb = hb.OrthographicRayBlaster(center, forward, up, width, height, Npix, Npix)
+rb = hb.OrthographicRayBlaster(center, rotateX, up, width, height, Npix, Npix)
 
 fname = PLANTS.fetch('fullSoy_2-12a.ply')
 #fname = PLANTS.fetch('ambientFieldPly_10-29a.0001.ply')
@@ -69,11 +94,12 @@ N = 1
 import time
 t1 = time.time()
 for i in range(N):
-    o = rb.cast_once(s, True)
+    o = rb.cast_once(s)
+#o = rb.cast_once(s, True)
 t2 = time.time()
 print("Each takes {} seconds".format((t2 - t1) / N))
 
-triangle_hits(o)
+#triangle_hits(o)
 
 #If a ray hits the instance, the geomID and primID members of the hit are set to the geometry ID and primitive ID of the hit primitive in the instanced scene, and the instID member of the hit is set to the geometry ID of the instance in the top-level scene.
 
@@ -84,12 +110,12 @@ triangle_hits(o)
 o = {'tfar': o}
 print(o)
 
-primIDs = o['tfar']['primID']
-print(primIDs)
+#primIDs = o['tfar']['primID']
+#print(primIDs)
 
 #each triangle that gets hit by a ray at least once
-unique_primIDs = np.unique(o['tfar']['primID'])
-print(unique_primIDs)
+#unique_primIDs = np.unique(o['tfar']['primID'])
+#print(unique_primIDs)
 #for i in unique_primIDs:
     #print(i)
 
