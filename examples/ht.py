@@ -8,7 +8,7 @@ from hothouse.datasets import PLANTS
 
 def triangle_hits(o):
     triangle_hit_counts = []
-    
+
     for i, component in enumerate(s.components):
         triangle_hit_counts.append(np.bincount(o['primID'][o['geomID'] == i],
                                                minlength = component.triangles.shape[0]))
@@ -23,12 +23,14 @@ def triangle_hits(o):
     return triangle_hit_counts
 
 
+<<<<<<< HEAD
 
 
 #center = np.array([0.0, -100.0, 200])
 center = np.array([0.0, 0.0, 500.0])
 #forward = np.array([0.0, 1.0, 0.0])
 #up = np.array([0.0, 0.0, 1.0])
+
 
 Npix = 1024
 
@@ -50,6 +52,7 @@ hour_of_day = int(hh) + (int(mm) * (1 / 60))
 
 sc.sun_calcs(latitude, longitude, standard_meridian, day_of_year, hour_of_day)
 
+
 fname = PLANTS.fetch('fullSoy_2-12a.ply')
 #fname = 'ambientFieldPly_10-29a.0001.ply'
 p1 = hothouse.plant_model.PlantModel.from_ply(fname)
@@ -68,6 +71,9 @@ for rotation in (0, 90, 180, 270):
     rb = hb.OrthographicRayBlaster(center, forward, up, width, height, Npix, Npix)
     o = rb.cast_once(s)
     #o = rb.cast_once(s, True)
+
+    rb = hb.OrthographicRayBlaster(center, forward, up, width, height, Npix, Npix)
+
     o = {'tfar': o}
     o['tfar'][o['tfar'] > 1e36] = np.nan
     plt.clf()
