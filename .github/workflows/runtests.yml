@@ -12,7 +12,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Install and test
+    - name: Setup conda
       uses: s-weigand/setup-conda@v1
       with:
           update-conda: true
@@ -22,9 +22,9 @@ jobs:
       run: |
         conda install -n=base pyembree numpy
         source activate base
-        pip install -f requirements.txt
-        pip install -f requirements_dev.txt
-    - name: Test with pytest
+        pip install -r requirements.txt
+        pip install -r requirements_dev.txt
+    - name: Pytest
       run: |
         source activate base
         pytest
