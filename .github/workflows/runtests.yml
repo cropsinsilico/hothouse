@@ -20,9 +20,8 @@ jobs:
           conda-channels: anaconda, conda-forge
     - name: Install dependencies
       run: |
-        source activate base
-        conda env update -f requirements.txt
-        conda env update -f requirements_dev.txt
+        conda env update -n=base -f requirements.txt
+        conda env update -n=base -f requirements_dev.txt
     - name: Test with pytest
       run: |
         source activate base
