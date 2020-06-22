@@ -14,16 +14,16 @@ with open("HISTORY.rst") as history_file:
 
 requirements = [
     "Click>=6.0",
-    "pyembree>=0.1.5",
+    "pyembree>=0.1.6",
     "yggdrasil-framework>=0.8.7",
     "pooch>=0.3.1",
     "plyfile>=0.7",
     "numpy>=1.13.0",
-    "traitlets",
-    "traittypes",
-    "pvlib",
-    "tables",
-    "pythreejs",
+    "traitlets>=4.3.3",
+    "traittypes>=0.2.1",
+    "pvlib>=0.7.2",
+    "tables>=3.6.1",
+    "pythreejs>=2.2.0",
 ]
 
 setup_requirements = [
