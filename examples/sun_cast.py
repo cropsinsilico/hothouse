@@ -57,7 +57,7 @@ def get_scene(name):
         
 
 def plot_light(scene, camera, latitude_deg, longitude_deg, date,
-               fname="light.png"):
+               fname="light.png", single_bounce=False):
     # Solar radiation model including atmosphere
     ppfd_tot = sun_model(latitude_deg, longitude_deg, date)  # W m-2
 
@@ -66,7 +66,8 @@ def plot_light(scene, camera, latitude_deg, longitude_deg, date,
     sun = scene.get_sun_blaster(latitude_deg, longitude_deg, date,
                                 nx=nx, ny=ny,
                                 direct_ppfd=ppfd_tot['direct'],
-                                diffuse_ppfd=ppfd_tot['diffuse'])
+                                diffuse_ppfd=ppfd_tot['diffuse'],
+                                multibounce=(not single_bounce))
 
     # Compute flux density on scene from sun
     o = camera.compute_flux_density(scene, sun)
@@ -84,10 +85,11 @@ def plot_light(scene, camera, latitude_deg, longitude_deg, date,
 
 
 def iter_plot(scene, camera, latitude, longitude,
-              t_start, t_stop, n_step):
+              t_start, t_stop, n_step, single_bounce=False):
     dates = pd.date_range(t_start, t_stop, periods=n_step)
     for date in dates:
-        plot_light(scene, camera, latitude, longitude, date, fname=None)
+        plot_light(scene, camera, latitude, longitude, date, fname=None,
+                   single_bounce=single_bounce)
 
 
 if __name__ == "__main__":
@@ -105,6 +107,7 @@ if __name__ == "__main__":
     parser.add_argument('--time', default='2020-06-17 5:23:00')
     parser.add_argument('--start-time', default='2020-06-17 5:23:00')
     parser.add_argument('--stop-time', default='2020-06-17 19:25:00')
+    parser.add_argument('--single-bounce', action='store_true')
     args = parser.parse_args()
 
     scene, camera = get_scene(args.scene)
@@ -116,7 +119,9 @@ if __name__ == "__main__":
 
     if args.iterate:
         iter_plot(scene, camera, args.latitude, args.longitude,
-                  args.start_time, args.stop_time, args.nsteps)
+                  args.start_time, args.stop_time, args.nsteps,
+                  single_bounce=args.single_bounce)
     else:
         plot_light(scene, camera, args.latitude, args.longitude,
-                   args.time)  # , fname=('%s.png' % args.scene))
+                   args.time, single_bounce=args.single_bounce)
+        # , fname=('%s.png' % args.scene))

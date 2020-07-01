@@ -10,7 +10,7 @@ import pvlib
 from .traits_support import check_dtype, check_shape
 
 from hothouse import sun_calc
-from .ray_callbacks import RayCollisionPrinter
+from .ray_callbacks import RayCollisionPrinter, RayCollisionMultiBounce
 
 # pyembree receives origins and directions.
 
@@ -26,6 +26,7 @@ class RayBlaster(traitlets.HasTraits):
     directions = traittypes.Array().valid(check_shape(None, 3), check_dtype("f4"))
     intensity = traitlets.CFloat(1.0)
     diffuse_intensity = traitlets.CFloat(0.0)
+    multibounce = traitlets.CBool(False)
 
     @property
     def ray_intensity(self):
@@ -33,12 +34,19 @@ class RayBlaster(traitlets.HasTraits):
         return self.intensity / self.origins.shape[0]
 
     def cast_once(self, scene, verbose_output=False, query_type=QueryType.DISTANCE):
+        if self.multibounce:
+            callback_handler = RayCollisionMultiBounce(self.origins.shape[0], 10)
+        else:
+            callback_handler = None
         output = scene.embree_scene.run(
             self.origins,
             self.directions,
             query=query_type._value_,
             output=verbose_output,
+            callback_handler=callback_handler
         )
+        if self.multibounce:
+            output['bounces'] = callback_handler.bounces
         return output
 
     def compute_distance(self, scene):
@@ -137,6 +145,7 @@ class SunRayBlaster(OrthographicRayBlaster):
     solar_azimuth = traitlets.CFloat()
     solar_distance = traitlets.CFloat()
     _solpos_info = traittypes.DataFrame()
+    multibounce = traitlets.CBool(True)
 
     @traitlets.default("_solpos_info")
     def _solpos_info_default(self):
