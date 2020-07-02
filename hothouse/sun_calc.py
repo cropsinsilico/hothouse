@@ -2,6 +2,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import pvlib
 
 #FIX: take into account daylight savings time like in Example 11.1
 #ignoring for now
@@ -9,6 +10,39 @@ import pandas as pd
 #FIX: figure out where this came from in old raytracer
 kSOLAR_constant = 2600
 
+
+def solar_ppfd(latitude, longitude, date, altitude=180.0):
+    r"""Determine the Photosynthetic Photon Flux Density (PPFD)
+    received from the sun at a location and time.
+
+    Args:
+        latitude (float): Latitude in degrees.
+        longitude (float): Longitude in degrees.
+        date (datetime.datetime): Date & time w/ timezone information.
+        altitude (float, optional): Distance above sea level in meters.
+            Defaults to 180 meters (roughly the average for Illinois).
+
+    Returns:
+        dict: PPFD values for direct and diffuse light.
+
+    """
+    date = pvlib.tools._datetimelike_scalar_to_datetimeindex(date)
+    solpos = pvlib.solarposition.get_solarposition(
+        date, latitude, longitude)
+    dni_extra = pvlib.irradiance.get_extra_radiation(date)
+    airmass = pvlib.atmosphere.get_relative_airmass(solpos['apparent_zenith'])
+    pressure = pvlib.atmosphere.alt2pres(altitude)
+    am_abs = pvlib.atmosphere.get_absolute_airmass(airmass, pressure)
+    tl = pvlib.clearsky.lookup_linke_turbidity(date, latitude, longitude)
+    cs = pvlib.clearsky.ineichen(solpos['apparent_zenith'], am_abs, tl,
+                                 dni_extra=dni_extra, altitude=altitude)
+    # Convert from irradiance to PPFD
+    eta_par = 0.368
+    eta_photon = 4.56  # µmol s−1 W−1
+    irr2ppfd = eta_par * eta_photon
+    ppfd = {'direct': irr2ppfd * cs['dni'][0],
+            'diffuse': irr2ppfd * cs['dhi'][0]}
+    return ppfd
 
 def rotation_matrix(theta, u):
     r"""Get the rotation matrix necessary to rotate a 3D point around
