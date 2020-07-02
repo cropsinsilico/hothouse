@@ -10,7 +10,7 @@ import hothouse
 from hothouse.datasets import PLANTS
 from hothouse.scene import Scene
 from hothouse.blaster import OrthographicRayBlaster
-from pvlib_model import sun_model
+from hothouse.sun_calc import solar_ppfd
 
 
 def get_scene(name):
@@ -59,7 +59,7 @@ def get_scene(name):
 def plot_light(scene, camera, latitude_deg, longitude_deg, date,
                fname="light.png", single_bounce=False):
     # Solar radiation model including atmosphere
-    ppfd_tot = sun_model(latitude_deg, longitude_deg, date)  # W m-2
+    ppfd_tot = solar_ppfd(latitude_deg, longitude_deg, date)  # W m-2
 
     # Blaster representing the sun
     nx = ny = 1024
@@ -97,6 +97,7 @@ if __name__ == "__main__":
     parser.add_argument('--scene', default='plant',
                         choices=['plant', 'sphere', 'pyramid'])
     parser.add_argument('--iterate', action='store_true')
+    parser.add_argument('--animate', action='store_true')
     parser.add_argument('--nsteps', default=10, type=int)
     # These default to the values for Champaign, IL
     # Sunrise: 2020-06-17  5:23:00
@@ -121,6 +122,10 @@ if __name__ == "__main__":
         iter_plot(scene, camera, args.latitude, args.longitude,
                   args.start_time, args.stop_time, args.nsteps,
                   single_bounce=args.single_bounce)
+    elif args.animate:
+        scene.animate_sun(camera, args.latitude, args.longitude,
+                          args.start_time, args.stop_time, args.nsteps,
+                          fname='light.html')
     else:
         plot_light(scene, camera, args.latitude, args.longitude,
                    args.time, single_bounce=args.single_bounce)

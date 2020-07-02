@@ -8,6 +8,7 @@ from IPython.core.display import display
 from .model import Model
 from .blaster import RayBlaster, OrthographicRayBlaster, SunRayBlaster
 from .traits_support import check_shape, check_dtype
+from .sun_calc import solar_ppfd
 
 from pyembree import rtcore_scene as rtcs
 from pyembree.mesh_construction import TriangleMesh
@@ -88,6 +89,64 @@ class Scene(traitlets.HasTraits):
                                 ground=self.ground, north=self.north,
                                 **kwargs)
         return blaster
+
+    def animate_sun(self, camera, latitude, longitude,
+                    t_start, t_stop, n_step, altitude=180.0,
+                    fname=None):
+        r"""Create an animation of the sun moving across the scene
+        during the specified time.
+
+        Args:
+            latitude (float): Latitude in degrees.
+            longitude (float): Longitude in degrees.
+            t_start (datetime.datetime): Start date & time w/ timezone
+                information.
+            t_stop (datetime.datetime): Stop date & time w/ timezone
+                information.
+            n_step (int): Number of steps between t_start and t_stop
+                to include in animation.
+            altitude (float, optional): Distance above sea level in
+                meters. Defaults to 180 meters (roughly the average for
+                Illinois).
+            fname (str, optional): File where animation should be saved.
+                Defaults to None and animation will be shown instead.
+
+        Returns:
+            matplotlib.animation.FuncAnimation: Animation object.
+
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib.animation import FuncAnimation, writers
+        from matplotlib.colors import LogNorm
+        import pandas as pd
+        nx = ny = 1024
+        fig, ax = plt.subplots()
+        img = plt.imshow(np.nan * np.ones((nx, ny)), origin='lower',
+                         norm=LogNorm(50, 5.0e4))
+        plt.colorbar()
+
+        def update(frame):
+            ppfd_tot = solar_ppfd(latitude, longitude, frame,
+                                  altitude=altitude)
+            sun = self.get_sun_blaster(latitude, longitude, frame,
+                                       nx=nx, ny=ny,
+                                       direct_ppfd=ppfd_tot['direct'],
+                                       diffuse_ppfd=ppfd_tot['diffuse'],
+                                       multibounce=True)
+            o = camera.compute_flux_density(self, sun)
+            o[o <= 0] = np.nan
+            img.set_data(o.reshape((camera.ny, camera.nx), order='F'))
+            return img,
+            
+        dates = pd.date_range(t_start, t_stop, periods=n_step)
+        ani = FuncAnimation(fig, update, frames=list(dates), blit=False)
+        if fname is None:
+            plt.show()
+        else:
+            Writer = writers['html']
+            writer = Writer(fps=15, metadata=dict(artist='Me'), bitrate=1800)
+            ani.save(fname, writer=writer)
+        return ani
 
     def compute_flux_density(self, light_sources, any_direction=True):
         r"""Compute the flux density on each scene element from a
