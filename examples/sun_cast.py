@@ -22,7 +22,7 @@ def get_scene(name):
         forward = np.array([0.25, 1.0, 0.0], dtype='f4')
         up = np.array([0.0, 0.0, 1.0], dtype='f4')
         width = height = 800
-    elif name == 'sphere':
+    elif name in ['sphere', 'sphere_ply']:
         ground = np.array([0.0, 0.0, -100.0], dtype='f4')
         fname = os.path.join('data', 'sphere.ply')
         center = np.array([0.0, -300.0, 0], dtype='f4')
@@ -32,6 +32,16 @@ def get_scene(name):
         # forward = np.array([0.0, 0.0, -1.0], dtype='f4')
         # up = np.array([0.0, 1.0, 0.0], dtype='f4')
         width = height = 400
+    elif name == 'sphere_obj':
+        ground = np.array([0.0, 0.0, -20.0], dtype='f4')
+        fname = os.path.join('data', 'sphere.obj')
+        center = np.array([0.0, -50.0, 0], dtype='f4')
+        forward = np.array([0.0, 1.0, 0.0], dtype='f4')
+        up = np.array([0.0, 0.0, 1.0], dtype='f4')
+        # center = np.array([0.0, 0.0, 300], dtype='f4')
+        # forward = np.array([0.0, 0.0, -1.0], dtype='f4')
+        # up = np.array([0.0, 1.0, 0.0], dtype='f4')
+        width = height = 80
     elif name == 'pyramid':
         ground = np.array([0.0, 0.0, 0.0], dtype='f4')
         fname = os.path.join('data', 'pyramid.ply')
@@ -42,7 +52,21 @@ def get_scene(name):
         # forward = np.array([0.0, 1.0, 0.0], dtype='f4')
         # up = np.array([0.0, 0.0, 1.0], dtype='f4')
         width = height = 2
-    p = hothouse.plant_model.PlantModel.from_ply(fname)
+    elif name == 'real':
+        ground = np.array([-0.025391, 5.39746, -0.459961], dtype='f4')
+        fname = os.path.join('data', '387-js261.obj')
+        center = np.array([-0.025391, 4.0, -0.095703], dtype='f4')
+        forward = np.array([0.0, 1.0, 0.0], dtype='f4')
+        up = np.array([0.0, 0.0, 1.0], dtype='f4')
+        width = height = 0.75
+    if fname.endswith('.ply'):
+        p = hothouse.plant_model.PlantModel.from_ply(
+            fname, transmittance=0.075, reflectance=0.075)
+    elif fname.endswith('.obj'):
+        p = hothouse.plant_model.PlantModel.from_obj(
+            fname, transmittance=0.075, reflectance=0.075)
+    else:
+        raise ValueError("Unsure how to handle file: '%s'" % fname)
     scene = Scene(ground=ground)
     scene.add_component(p)
     # Camera
@@ -95,7 +119,8 @@ def iter_plot(scene, camera, latitude, longitude,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--scene', default='plant',
-                        choices=['plant', 'sphere', 'pyramid'])
+                        choices=['plant', 'sphere', 'sphere_ply', 'sphere_obj',
+                                 'pyramid', 'real'])
     parser.add_argument('--iterate', action='store_true')
     parser.add_argument('--animate', action='store_true')
     parser.add_argument('--nsteps', default=10, type=int)

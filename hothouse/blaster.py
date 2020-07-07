@@ -35,7 +35,10 @@ class RayBlaster(traitlets.HasTraits):
 
     def cast_once(self, scene, verbose_output=False, query_type=QueryType.DISTANCE):
         if self.multibounce:
-            callback_handler = RayCollisionMultiBounce(self.origins.shape[0], 10)
+            callback_handler = RayCollisionMultiBounce(
+                self.origins.shape[0], 10,
+                [c.transmittance for c in scene.components],
+                [c.reflectance for c in scene.components])
         else:
             callback_handler = None
         output = scene.embree_scene.run(
@@ -106,14 +109,15 @@ class OrthographicRayBlaster(RayBlaster):
     def _default_east(self):
         return np.cross(self.forward, self.up)
 
-    def __init__(self, *args, **kwargs):
-        super(OrthographicRayBlaster, self).__init__(*args, **kwargs)
-
-        # here origin is not the center, but the bottom left
+    @traitlets.default("directions")
+    def _default_directions(self):
         self._directions = np.zeros((self.nx, self.ny, 3), dtype="f4")
         self._directions[:] = self.forward[None, None, :]
-        self.directions = self._directions.view().reshape((self.nx * self.ny, 3))
+        return self._directions.view().reshape((self.nx * self.ny, 3))
 
+    @traitlets.default("origins")
+    def _default_origins(self):
+        # here origin is not the center, but the bottom left
         self._origins = np.zeros((self.nx, self.ny, 3), dtype="f4")
         offset_x, offset_y = np.mgrid[
             -self.width / 2 : self.width / 2 : self.nx * 1j,
@@ -124,7 +128,7 @@ class OrthographicRayBlaster(RayBlaster):
             + offset_x[..., None] * self.east
             + offset_y[..., None] * self.up
         )
-        self.origins = self._origins.view().reshape((self.nx * self.ny, 3))
+        return self._origins.view().reshape((self.nx * self.ny, 3))
 
 
 class SunRayBlaster(OrthographicRayBlaster):
@@ -146,6 +150,8 @@ class SunRayBlaster(OrthographicRayBlaster):
     solar_distance = traitlets.CFloat()
     _solpos_info = traittypes.DataFrame()
     multibounce = traitlets.CBool(True)
+    scene_limits = traittypes.Array(None, allow_none=True).valid(
+        check_shape(None, 3), check_dtype("f4"))
 
     @traitlets.default("_solpos_info")
     def _solpos_info_default(self):
@@ -171,7 +177,6 @@ class SunRayBlaster(OrthographicRayBlaster):
     def zenith_direction(self):
         zd_nonorm = self.zenith - self.ground
         solar_distance = np.linalg.norm(zd_nonorm)
-        print("sd zd", solar_distance, zd_nonorm)
         return zd_nonorm / solar_distance
 
     @traitlets.default("solar_distance")
@@ -179,25 +184,56 @@ class SunRayBlaster(OrthographicRayBlaster):
         zd_nonorm = self.zenith - self.ground
         return np.linalg.norm(zd_nonorm)
 
-    def solar_rotation(self, point):
+    def solar_rotation(self, point, is_ray=False):
         r"""Rotate a point according to same rotation that moves
-        sun from the zenith to it location in the sky.
+        sun from the zenith to its location in the sky.
 
         Args:
             point (array): 3D point to rotate
+            is_ray (bool, optional): If True, the point is treated as
+                a ray and will not be shifted prior to rotation.
 
         """
+        
+        if is_ray:
+            origin = 0.0
+        else:
+            origin = self.ground
         return sun_calc.rotate_u(
-            sun_calc.rotate_u(point, np.radians(90 - self.solar_altitude), self.north),
+            sun_calc.rotate_u(point - origin,
+                              np.radians(90 - self.solar_altitude),
+                              self.north),
             np.radians(90 - self.solar_azimuth),
             self.zenith_direction,
-        )
+        ) + origin
 
     @traitlets.default("forward")
     def _forward_default(self):
         # Negative to point from sun to the earth rather than from
         # eart to the sun
-        return -self.solar_rotation(self.zenith_direction)
+        return -self.solar_rotation(self.zenith_direction, is_ray=True)
+
+    @traitlets.default("width")
+    def _width_default(self):
+        out = 1.0
+        if self.scene_limits is not None:
+            v = self.ground - self.solar_distance * self.forward
+            a = self.scene_limits - v
+            b = self.east
+            adotb = np.dot(a, b) / np.linalg.norm(b)
+            out = np.max(adotb) - np.min(adotb)
+        return out
+
+    @traitlets.default("height")
+    def _height_default(self):
+        out = 1.0
+        if self.scene_limits is not None:
+            v = self.ground - self.solar_distance * self.forward
+            a = self.scene_limits - v
+            b = self.up
+            adotb = np.dot(a, b) / np.linalg.norm(b)
+            out = np.max(adotb) - np.min(adotb)
+        return out
 
     @traitlets.default("center")
     def _center_default(self):
@@ -210,10 +246,8 @@ class SunRayBlaster(OrthographicRayBlaster):
                     np.linalg.norm(v - self.ground)
                     * np.tan(np.radians(self.solar_altitude))
                 )
-            )
-            / 2,
+            ),
         )
-        print(offset)
         v = v + offset * self.up
         return v
 
@@ -223,7 +257,7 @@ class SunRayBlaster(OrthographicRayBlaster):
         east = np.cross(self.north, zenith_direction)
         # The "east" used here is not the "east" used elsewhere.
         # This is the east wrt north etc, but we need an east for blasting from elsewhere.
-        return -self.solar_rotation(east)
+        return -self.solar_rotation(east, is_ray=True)
 
 
 class ProjectionRayBlaster(RayBlaster):

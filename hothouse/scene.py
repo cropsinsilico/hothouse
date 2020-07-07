@@ -72,22 +72,28 @@ class Scene(traitlets.HasTraits):
         # TODO: Calculate direct/diffuse ppfd from lat/long/date
         # using pvi if not provided
         max_distance2 = 0.0
+        mins = []
+        maxs = []
         for c in self.components:
+            mins.append(np.min(c.vertices, axis=0))
+            maxs.append(np.max(c.vertices, axis=0))
             max_distance2 = max(
                 max_distance2,
                 np.max(np.sum((c.vertices-self.ground)**2, axis=1)))
+        mins = np.min(np.vstack(mins), axis=0)
+        maxs = np.max(np.vstack(maxs), axis=0)
+        limits = np.vstack([mins, maxs])
+        xx, yy, zz = np.meshgrid(limits[:, 0], limits[:, 1], limits[:, 2])
+        limits = np.vstack([xx.flatten(), yy.flatten(), zz.flatten()]).T
         max_distance = np.sqrt(max_distance2)
-        kwargs.setdefault('zenith', self.up * max_distance)
-        kwargs.setdefault('width', 2 * max_distance)
-        kwargs.setdefault('height', 2 * max_distance)
-        kwargs.setdefault('intensity', (direct_ppfd
-                                        * kwargs['width']
-                                        * kwargs['height']))
+        kwargs.setdefault('zenith', self.up * max_distance + self.ground)
         kwargs.setdefault('diffuse_intensity', diffuse_ppfd)
+        kwargs.setdefault('scene_limits', limits)
         blaster = SunRayBlaster(latitude=latitude,
                                 longitude=longitude, date=date,
                                 ground=self.ground, north=self.north,
                                 **kwargs)
+        blaster.intensity = direct_ppfd * blaster.width * blaster.height
         return blaster
 
     def animate_sun(self, camera, latitude, longitude,
