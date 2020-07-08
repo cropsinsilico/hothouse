@@ -42,7 +42,7 @@ class Model(traitlets.HasTraits):
     indices = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3), check_dtype("i4")
     )
-    attributes = traittypes.Array(None, allow_none=True)
+    values = traittypes.Array(None, allow_none=True)
     triangles = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3, 3), check_dtype("f4")
     )
@@ -72,7 +72,7 @@ class Model(traitlets.HasTraits):
         triangles = np.array(triangles).swapaxes(1, 2)
         obj = cls(
             vertices=xyz_vert,
-            indices=xyz_faces.astype('i4'),
+            indices=xyz_faces.astype("i4"),
             attributes=colors,
             triangles=triangles,
         )
@@ -86,13 +86,11 @@ class Model(traitlets.HasTraits):
             index=pythreejs.BufferAttribute(
                 self.indices.ravel(order="C").astype("u4"), normalized=False
             ),
+            uv=pythreejs.BufferAttribute(
+                array=np.array([1.0, 0.0] * self.indices.shape[0], dtype="float32"),
+                normalized=False,
+            ),
         )
-        if self.attributes is not None:
-            attributes["color"] = pythreejs.BufferAttribute(self.attributes)
-            # Face colors requires
-            # https://speakerdeck.com/yomotsu/low-level-apis-using-three-dot-js?slide=22
-            # and
-            # https://github.com/mrdoob/three.js/blob/master/src/renderers/shaders/ShaderLib.js
         geometry = pythreejs.BufferGeometry(attributes=attributes)
         geometry.exec_three_obj_method("computeFaceNormals")
         return geometry
