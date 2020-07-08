@@ -79,20 +79,24 @@ class Model(traitlets.HasTraits):
 
         return obj
 
+    @traitlets.default("values")
+    def _values_default(self):
+        return 0.5 * np.ones((self.indices.shape[0] * 3, 2), dtype="float32")
+
     @property
     def geometry(self):
+        new_vert = self.vertices[self.indices]
+        new_vert = new_vert.reshape((new_vert.size // 3, 3))
         attributes = dict(
-            position=pythreejs.BufferAttribute(self.vertices, normalized=False),
+            position=pythreejs.BufferAttribute(new_vert, normalized=False),
             index=pythreejs.BufferAttribute(
-                self.indices.ravel(order="C").astype("u4"), normalized=False
+                np.arange(new_vert.shape[0]).astype("u4"), normalized=False
             ),
-            uv=pythreejs.BufferAttribute(
-                array=np.array([1.0, 0.0] * self.indices.shape[0], dtype="float32"),
-                normalized=False,
-            ),
+            uv=pythreejs.BufferAttribute(array=self.values, normalized=False,),
         )
         geometry = pythreejs.BufferGeometry(attributes=attributes)
         geometry.exec_three_obj_method("computeFaceNormals")
+        traitlets.link((self, "values"), (attributes["uv"], "array"))
         return geometry
 
     @cached_property
