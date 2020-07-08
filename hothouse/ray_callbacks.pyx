@@ -3,14 +3,14 @@
 cimport numpy as np
 import numpy as np
 from pyembree.callback_handler cimport \
-    RayCollisionCallback, CALLBACK_TERMINATE, CALLBACK_CONTINUE
+    RayCollisionCallback, _CALLBACK_TERMINATE, _CALLBACK_CONTINUE
 from pyembree.rtcore_geometry cimport RTC_INVALID_GEOMETRY_ID
 from pyembree.rtcore_ray cimport RTCRay
 
 cdef class RayCollisionPrinter(RayCollisionCallback):
     cdef int callback(self, RTCRay &ray):
         print("Hi!", ray.geomID)
-        return CALLBACK_TERMINATE
+        return _CALLBACK_TERMINATE
 
 from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
 
@@ -178,18 +178,18 @@ cdef class RayCollisionMultiBounce(RayCollisionCallback):
         if ray.geomID == RTC_INVALID_GEOMETRY_ID:
             if self.nq > 0:
                 self.ipower = self.pop_ray(ray)
-                return CALLBACK_CONTINUE
+                return _CALLBACK_CONTINUE
             else:
                 self.iray += 1
                 self.ipower = 1.0
-                return CALLBACK_TERMINATE
+                return _CALLBACK_TERMINATE
         if self.nbounce[self.iray] >= (self.maxbounce - 1):
             # Reset queued since there isn't any more room and
             # move to next original ray
             self.nq = 0
             self.iray += 1
             self.ipower = 1.0
-            return CALLBACK_TERMINATE
+            return _CALLBACK_TERMINATE
         # print("Hi!", self.iray, ray.geomID, ray.tnear, ray.tfar, ray.primID, ray.org, ray.dir)
         # Record ray parameters for bounce
         idx = self.nbounce[self.iray]
@@ -211,7 +211,7 @@ cdef class RayCollisionMultiBounce(RayCollisionCallback):
             # TODO: reset ray to ensure it is not logged twice
             self.iray += 1
             self.ipower = 1.0
-            return CALLBACK_TERMINATE
+            return _CALLBACK_TERMINATE
         # Reset ray parameters from queue
         self.ipower = self.pop_ray(ray)
-        return CALLBACK_CONTINUE
+        return _CALLBACK_CONTINUE
