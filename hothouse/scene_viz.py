@@ -89,6 +89,8 @@ class CropRenderer(traitlets.HasTraits):
         # Disconnect our old blaster
         if isinstance(change["old"], RayBlaster):
             change["old"].unobserve(self.update_blaster, traitlets.All)
+        if not isinstance(change["new"], RayBlaster):
+            return
         change["new"].observe(
             self.update_blaster,
             ["directions", "origins", "intensity", "diffuse_intensity"],
