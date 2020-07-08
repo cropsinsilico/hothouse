@@ -123,6 +123,26 @@ class OrthographicRayBlaster(RayBlaster):
         )
         self.origins = self._origins.view().reshape((self.nx * self.ny, 3))
 
+    def annotate_rays(self, scene, skip=64):
+        import pythreejs
+
+        positions = np.empty((1024 * 1024 // (skip * skip), 2, 3))
+        positions[:, 0] = self._origins[::skip, ::skip, :].reshape(
+            positions[:, 0].shape
+        )
+        positions[:, 1] = (
+            self._origins[::skip, ::skip, :]
+            + 100.0 * self._directions[::skip, ::skip, :]
+        ).reshape(positions[:, 0].shape)
+        colors = np.empty((1024 * 1024 // (skip * skip), 2, 3), dtype="f4")
+        colors[:, 0, :] = [0, 0, 0]
+        colors[:, 1, :] = [1, 0, 0]
+
+        lg = pythreejs.LineSegmentsGeometry(positions=positions, colors=colors)
+        lm = pythreejs.LineMaterial(linewidth=10, vertexColors="VertexColors")
+        ls = pythreejs.LineSegments2(lg, lm)
+        scene.scene.add(ls)
+
 
 class SunRayBlaster(OrthographicRayBlaster):
     # ground: Position of center of ray projection on the ground

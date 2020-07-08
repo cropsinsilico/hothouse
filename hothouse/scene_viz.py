@@ -24,6 +24,8 @@ class CropRenderer(traitlets.HasTraits):
     camera = traitlets.Instance(pythreejs.Camera)
     controls = traitlets.List()
     blaster = traitlets.Instance(RayBlaster)
+    width = traitlets.CInt(500)
+    height = traitlets.CInt(500)
     # arrow = traitlets.Instance()
 
     @traitlets.default("renderer")
@@ -34,11 +36,13 @@ class CropRenderer(traitlets.HasTraits):
             background="white",
             background_opacity=1,
             controls=self.controls,
-            width=500,
-            height=500,
+            width=self.width,
+            height=self.height,
         )
         traitlets.link((self, "camera"), (r, "camera"))
         traitlets.link((self, "controls"), (r, "controls"))
+        traitlets.link((self, "width"), (r, "width"))
+        traitlets.link((self, "height"), (r, "height"))
         return r
 
     @traitlets.observe("colormap")
