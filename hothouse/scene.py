@@ -1,9 +1,7 @@
 import traittypes
 import traitlets
-import pythreejs
 import numpy as np
 import pvlib
-from IPython.core.display import display
 
 from .model import Model
 from .blaster import RayBlaster, OrthographicRayBlaster, SunRayBlaster
@@ -11,16 +9,6 @@ from .traits_support import check_shape, check_dtype
 
 from pyembree import rtcore_scene as rtcs
 from pyembree.mesh_construction import TriangleMesh
-
-
-def _get_cmap_texture(cmap_name):
-    import matplotlib.cm as mcm
-
-    values = np.array(mcm.get_cmap(cmap_name).colors)
-    new_values = np.empty((256, 1, 4), dtype="u1")
-    new_values[:, 0, :3] = (values * 255).astype("uint8")
-    new_values[:, 0, 3] = 255
-    return pythreejs.BaseDataTexture(data=new_values)
 
 
 class Scene(traitlets.HasTraits):
@@ -187,32 +175,3 @@ class Scene(traitlets.HasTraits):
                     np.degrees(tilt), blaster.diffuse_intensity
                 )
         return component_fd
-
-    def _ipython_display_(self):
-        # This needs to actually display, which is not the same as returning a display.
-        cam = pythreejs.PerspectiveCamera(
-            position=[25, 35, 100], fov=20, children=[pythreejs.AmbientLight()],
-        )
-        children = [cam, pythreejs.AmbientLight(color="#dddddd")]
-        material = pythreejs.MeshBasicMaterial(
-            map=_get_cmap_texture("magma"), side="DoubleSide"
-        )
-        for model in self.components:
-            mesh = pythreejs.Mesh(
-                geometry=model.geometry, material=material, position=[0, 0, 0]
-            )
-            children.append(mesh)
-
-        scene = pythreejs.Scene(children=children)
-
-        rendererCube = pythreejs.Renderer(
-            camera=cam,
-            background="white",
-            background_opacity=1,
-            scene=scene,
-            controls=[pythreejs.OrbitControls(controlling=cam)],
-            width=800,
-            height=800,
-        )
-
-        return rendererCube
