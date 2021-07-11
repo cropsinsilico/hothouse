@@ -10,6 +10,7 @@ import pvlib
 from .traits_support import check_dtype, check_shape
 
 from hothouse import sun_calc
+from .ray_callbacks import RayCollisionPrinter, RayCollisionMultiBounce
 
 # pyembree receives origins and directions.
 
@@ -25,6 +26,7 @@ class RayBlaster(traitlets.HasTraits):
     directions = traittypes.Array().valid(check_shape(None, 3), check_dtype("f4"))
     intensity = traitlets.CFloat(1.0)
     diffuse_intensity = traitlets.CFloat(0.0)
+    multibounce = traitlets.CBool(False)
 
     @property
     def ray_intensity(self):
@@ -32,12 +34,19 @@ class RayBlaster(traitlets.HasTraits):
         return self.intensity / self.origins.shape[0]
 
     def cast_once(self, scene, verbose_output=False, query_type=QueryType.DISTANCE):
+        if self.multibounce:
+            callback_handler = RayCollisionMultiBounce(self.origins.shape[0], 10)
+        else:
+            callback_handler = None
         output = scene.embree_scene.run(
             self.origins,
             self.directions,
             query=query_type._value_,
             output=verbose_output,
+            callback_handler=callback_handler
         )
+        if self.multibounce:
+            output['bounces'] = callback_handler.bounces
         return output
 
     def compute_distance(self, scene):
@@ -52,8 +61,7 @@ class RayBlaster(traitlets.HasTraits):
         )
         return output
 
-    def compute_flux_density(self, scene, light_sources,
-                             any_direction=True):
+    def compute_flux_density(self, scene, light_sources, any_direction=True):
         r"""Compute the flux density on each scene element touched by
         this blaster from a set of light sources.
 
@@ -73,7 +81,8 @@ class RayBlaster(traitlets.HasTraits):
 
         """
         fd_scene = scene.compute_flux_density(
-            light_sources, any_direction=any_direction)
+            light_sources, any_direction=any_direction
+        )
         out = np.zeros(self.nx * self.ny, "f4")
         camera_hits = self.compute_count(scene)
         for ci, component in enumerate(scene.components):
@@ -136,7 +145,8 @@ class SunRayBlaster(OrthographicRayBlaster):
     solar_azimuth = traitlets.CFloat()
     solar_distance = traitlets.CFloat()
     _solpos_info = traittypes.DataFrame()
-    
+    multibounce = traitlets.CBool(True)
+
     @traitlets.default("_solpos_info")
     def _solpos_info_default(self):
         return pvlib.solarposition.get_solarposition(
@@ -178,12 +188,10 @@ class SunRayBlaster(OrthographicRayBlaster):
 
         """
         return sun_calc.rotate_u(
-            sun_calc.rotate_u(
-                point,
-                np.radians(90 - self.solar_altitude),
-                self.north),
+            sun_calc.rotate_u(point, np.radians(90 - self.solar_altitude), self.north),
             np.radians(90 - self.solar_azimuth),
-            self.zenith_direction)
+            self.zenith_direction,
+        )
 
     @traitlets.default("forward")
     def _forward_default(self):
@@ -216,7 +224,7 @@ class SunRayBlaster(OrthographicRayBlaster):
         # The "east" used here is not the "east" used elsewhere.
         # This is the east wrt north etc, but we need an east for blasting from elsewhere.
         return -self.solar_rotation(east)
-    
+
 
 class ProjectionRayBlaster(RayBlaster):
     pass

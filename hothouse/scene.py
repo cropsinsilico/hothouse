@@ -118,51 +118,95 @@ class Scene(traitlets.HasTraits):
             component_fd[ci] = np.zeros(component.triangles.shape[0], "f4")
         for blaster in light_sources:
             counts = blaster.compute_count(self)
-            any_hits = (counts["primID"] >= 0)
-            for ci, component in enumerate(self.components):
-                idx_hits = np.logical_and(counts["geomID"] == ci,
-                                          any_hits)
-                norms = component.normals
-                areas = component.areas
-                if isinstance(blaster, OrthographicRayBlaster):
-                    component_counts = np.bincount(
-                        counts["primID"][idx_hits],
-                        minlength=component.triangles.shape[0])
-                    aoi = np.arccos(
-                        np.dot(norms, -blaster.forward)
-                        / (2.0 * areas * np.linalg.norm(blaster.forward)))
-                    if any_direction:
-                        aoi[aoi > np.pi/2] -= np.pi
+            if blaster.multibounce:
+                orthographic = isinstance(blaster, OrthographicRayBlaster)
+                for i in range(max(counts["bounces"]["nbounce"])):
+                    orthographic = (orthographic and (i == 0))
+                    if orthographic:
+                        ray_dir = blaster.forward
+                        ray_intensity = blaster.ray_intensity
+                        diffuse_intensity = blaster.diffuse_intensity
                     else:
-                        aoi[aoi > np.pi/2] = np.pi  # No contribution
-                    component_fd[ci] += (
-                        component_counts * blaster.ray_intensity
-                        * np.cos(aoi) / areas)
+                        ray_dir = counts["bounces"]["ray_dir"][:, i, :]
+                        ray_intensity = (
+                            blaster.ray_intensity
+                            * counts["bounces"]["power"][:, i])
+                        diffuse_intensity = 0.0
+                    primID = counts["bounces"]["primID"][:, i]
+                    geomID = counts["bounces"]["geomID"][:, i]
+                    self._accumulate_hits(component_fd, primID, geomID,
+                                          ray_dir, ray_intensity,
+                                          diffuse_intensity,
+                                          orthographic=orthographic,
+                                          any_direction=any_direction)
+            else:
+                if isinstance(blaster, OrthographicRayBlaster):
+                    ray_dir = blaster.forward
+                    orthographic = True
                 else:
-                    # TODO: This loop can be removed if AOI is calculated
-                    # for each intersection by embree (or callback)
-                    for idx_ray in np.where(idx_hits)[0]:
-                        idx_scene = output["primID"][i]
-                        aoi = np.arccos(
-                            np.dot(norms[idx_scene],
-                                   -blaster.directions[idx_ray, :])
-                            / (2.0 * areas[idx_scene] * np.linalg.norm(
-                                blaster.directions[idx_ray, :])))
-                        if any_direction:
-                            aoi[aoi > np.pi/2] -= np.pi
-                        else:
-                            aoi[aoi > np.pi/2] = np.pi  # No contribution
-                        component_fd[ci][idx_scene] += (
-                            blaster.ray_intensity * np.cos(aoi)
-                            / areas[idx_scene])
-                # Diffuse
-                # TODO: This assumes diffuse light comes from everywhere
+                    ray_dir = blaster.directions
+                    orthographic = False
+                self._accumulate_hits(component_fd, counts["primID"],
+                                      counts["geomID"], ray_dir,
+                                      blaster.ray_intensity,
+                                      blaster.diffuse_intensity,
+                                      orthographic=orthographic,
+                                      any_direction=any_direction)
+        return component_fd
+
+    def _calc_incident_power(self, ray_dir, norm, area, any_direction=True):
+        aoi = np.arccos(
+            np.dot(norm, -ray_dir) / (2.0 * area * np.linalg.norm(ray_dir)))
+        if isinstance(aoi, np.ndarray):
+            if any_direction:
+                aoi[aoi > np.pi/2] -= np.pi
+            else:
+                aoi[aoi > np.pi/2] = np.pi  # No contribution
+        else:
+            if aoi > np.pi/2:
+                if any_direction:
+                    aoi -= np.pi
+                else:
+                    aoi = np.pi
+        return np.cos(aoi) / area
+
+    def _accumulate_hits(self, component_fd, primID, geomID,
+                         ray_dir, ray_intensity, diffuse_intensity,
+                         orthographic=False, any_direction=True):
+        any_hits = (primID >= 0)
+        for ci, component in enumerate(self.components):
+            norms = component.normals
+            areas = component.areas
+            idx_hits = np.logical_and(geomID == ci, any_hits)
+            if orthographic:
+                component_counts = np.bincount(
+                    primID[idx_hits], minlength=component.triangles.shape[0])
+                component_fd[ci] += np.array(
+                    component_counts * ray_intensity
+                    * self._calc_incident_power(
+                        ray_dir, norms, areas,
+                        any_direction=any_direction))
+            else:
+                if not isinstance(ray_intensity, np.ndarray):
+                    ray_intensity = ray_intensity * np.ones(primID.shape)
+                # TODO: This loop can be removed if AOI is calculated
+                # for each intersection by embree (or callback)
+                for idx_ray in np.where(idx_hits)[0]:
+                    idx_scene = primID[idx_ray]
+                    component_fd[ci][idx_scene] += (
+                        ray_intensity[idx_ray]
+                        * self._calc_incident_power(
+                            ray_dir[idx_ray, :],
+                            norms[idx_scene], areas[idx_scene],
+                            any_direction=any_direction))
+            # Diffuse
+            # TODO: This assumes diffuse light comes from everywhere
+            if diffuse_intensity > 0.0:
                 tilt = np.arccos(
                     np.dot(norms, self.up)
                     / (2.0 * areas * np.linalg.norm(self.up)))
                 component_fd[ci] += pvlib.irradiance.isotropic(
-                    np.degrees(tilt), blaster.diffuse_intensity)
-        return component_fd
+                    np.degrees(tilt), diffuse_intensity)
 
     def _ipython_display_(self):
         # This needs to actually display, which is not the same as returning a display.

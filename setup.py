@@ -4,7 +4,13 @@
 """The setup script."""
 
 from setuptools import setup, find_packages
+from Cython.Build import cythonize
+import numpy
 import versioneer
+import sys
+import os
+from pkg_resources import resource_filename
+from sys import platform as _platform
 
 with open("README.rst") as readme_file:
     readme = readme_file.read()
@@ -24,6 +30,7 @@ requirements = [
     "pvlib>=0.7.2",
     "tables>=3.6.1",
     "pythreejs>=2.2.0",
+    "Cython>=0.29.20",
 ]
 
 setup_requirements = [
@@ -33,6 +40,47 @@ setup_requirements = [
 test_requirements = [
     "pytest",
 ]
+
+
+# These routines are taken from yt
+def in_conda_env():
+    return any(s in sys.version for s in ("Anaconda", "Continuum", "conda"))
+
+
+def check_for_pyembree():
+    try:
+        fn = resource_filename("pyembree", "rtcore.pxd")
+    except ImportError:
+        return None
+    return os.path.dirname(fn)
+
+
+std_libs = []
+
+
+def append_embree_info(exts):
+    embree_prefix = os.path.abspath(check_for_pyembree())
+    embree_inc_dir = [os.path.join(embree_prefix, "include")]
+    embree_lib_dir = [os.path.join(embree_prefix, "lib")]
+    if in_conda_env():
+        conda_basedir = os.path.dirname(os.path.dirname(sys.executable))
+        embree_inc_dir.append(os.path.join(conda_basedir, "include"))
+        embree_lib_dir.append(os.path.join(conda_basedir, "lib"))
+
+    if _platform == "darwin":
+        embree_lib_name = "embree.2"
+    else:
+        embree_lib_name = "embree"
+
+    for ext in exts:
+        ext.include_dirs += embree_inc_dir + [numpy.get_include()]
+        ext.library_dirs += embree_lib_dir
+        ext.language = "c++"
+        ext.libraries += std_libs
+        ext.libraries += [embree_lib_name]
+
+    return exts
+
 
 setup(
     author="Matthew Turk",
@@ -66,4 +114,5 @@ setup(
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
     zip_safe=False,
+    ext_modules=append_embree_info(cythonize("**/*.pyx")),
 )
