@@ -9,6 +9,8 @@ from plyfile import PlyData, PlyElement
 
 from .traits_support import check_shape, check_dtype
 
+from yggdrasil.communication import open_file_comm
+
 cached_property = getattr(functools, "cached_property", property)
 
 # From itertools cookbook
@@ -46,9 +48,81 @@ class Model(traitlets.HasTraits):
     triangles = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3, 3), check_dtype("f4")
     )
+    normals = traittypes.Array(None, allow_none=True).valid(
+        check_shape(None, 3), check_dtype("f4")
+    )
+    vertex_normals = traittypes.Array(None, allow_none=True).valid(
+        check_shape(None, 3, 3), check_dtype("f4")
+    )
+    # TODO: Wavelength dependence?
+    transmittance = traittypes.Array(None, allow_none=True).valid(
+        check_dtype("f4"))
+    reflectance = traittypes.Array(None, allow_none=True).valid(
+        check_dtype("f4"))
 
     @classmethod
-    def from_ply(cls, filename):
+    def from_obj(cls, filename, transmittance=None, reflectance=None):
+        # with open_file_comm(filename, 'r', filetype='obj') as comm:
+        #     flag, obj = comm.recv()
+        #     assert(flag)
+        # xyz_vert = np.asarray([[v[k] for k in ['x', 'y', 'z']]
+        #                        for v in obj['vertices']],
+        #                       dtype='f4')
+        # xyz_faces = np.asarray([[v['vertex_index'] for v in f]
+        #                         for f in obj['faces']], dtype='i4')
+        # triangles = np.asarray(obj.mesh, dtype='f4')
+        # vertex_normals = obj.vertex_normals
+        # if vertex_normals is not None:
+        #     vertex_normals = np.asarray(vertex_normals, dtype='f4')
+        import pywavefront
+        obj = pywavefront.Wavefront(filename, collect_faces=True)
+        xyz_vert = np.asarray(obj.vertices, dtype='f4')
+        xyz_faces = []
+        triangles = []
+        vertex_normals = []
+        colors = []
+        for mesh in obj.mesh_list:
+            ifaces = np.asarray(mesh.faces, dtype='i4')
+            xyz_faces.append(ifaces)
+            for material in mesh.materials:
+                if material.has_normals:
+                    vertex_data = np.asarray(
+                        material.vertices, dtype='f4').reshape(
+                            (-1, 3, material.vertex_size))
+                    i0 = (material.has_uvs * 2)
+                    i1 = (material.has_uvs * 2
+                          + material.has_normals * 3)
+                    i2 = (material.has_uvs * 2
+                          + material.has_normals * 3
+                          + material.has_colors * 3)
+                    vertex_normals.append(
+                        vertex_data[:, :, i0:(i0 + 3)])
+                    colors.append(
+                        vertex_data[:, :, i1:(i1 + 3)])
+                    triangles.append(
+                        vertex_data[:, :, i2:(i2 + 3)])
+        xyz_faces = np.concatenate(xyz_faces, axis=0)
+        triangles = np.concatenate(triangles, axis=0)
+        print('triangles', np.min(xyz_vert, axis=0), np.max(xyz_vert, axis=0))
+        vertex_normals = np.concatenate(vertex_normals, axis=0)
+        colors = np.concatenate(colors, axis=0)
+        if isinstance(transmittance, (float, np.float)):
+            transmittance = transmittance * np.ones(triangles.shape[0], 'f4')
+        if isinstance(reflectance, (float, np.float)):
+            reflectance = reflectance * np.ones(triangles.shape[0], 'f4')
+        out = cls(
+            vertices=xyz_vert,
+            indices=xyz_faces,
+            # attributes=colors,
+            triangles=triangles,
+            vertex_normals=vertex_normals,
+            transmittance=transmittance,
+            reflectance=reflectance
+        )
+        return out
+
+    @classmethod
+    def from_ply(cls, filename, transmittance=None, reflectance=None):
         # This is probably not the absolute best way to do this.
         plydata = PlyData.read(filename)
         vertices = plydata["vertex"][:]
@@ -70,11 +144,17 @@ class Model(traitlets.HasTraits):
                 axis=-1,
             )
         triangles = np.array(triangles).swapaxes(1, 2)
+        if isinstance(transmittance, (float, np.float)):
+            transmittance = transmittance * np.ones(triangles.shape[0], 'f4')
+        if isinstance(reflectance, (float, np.float)):
+            reflectance = reflectance * np.ones(triangles.shape[0], 'f4')
         obj = cls(
             vertices=xyz_vert,
             indices=xyz_faces.astype('i4'),
             attributes=colors,
             triangles=triangles,
+            transmittance=transmittance,
+            reflectance=reflectance
         )
 
         return obj
@@ -97,12 +177,18 @@ class Model(traitlets.HasTraits):
         geometry.exec_three_obj_method("computeFaceNormals")
         return geometry
 
-    @cached_property
-    def normals(self):
+    @traitlets.default("normals")
+    def _default_normals(self):
         r"""Array of the normal vectors for the triangles in this model."""
         v10 = self.triangles[:, 1, :] - self.triangles[:, 0, :]
         v20 = self.triangles[:, 2, :] - self.triangles[:, 0, :]
-        return np.cross(v10, v20)
+        out = np.cross(v10, v20)
+        if isinstance(self.vertex_normals, np.ndarray):
+            # Direction from vertex normals
+            mask = (np.einsum("ij, ij->i", out,
+                              np.mean(self.vertex_normals, axis=1)) < 0)
+            out[mask] *= -1
+        return out
 
     @cached_property
     def areas(self):

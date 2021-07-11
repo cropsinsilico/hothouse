@@ -10,7 +10,7 @@ import hothouse
 from hothouse.datasets import PLANTS
 from hothouse.scene import Scene
 from hothouse.blaster import OrthographicRayBlaster
-from pvlib_model import sun_model
+from hothouse.sun_calc import solar_ppfd
 
 
 def get_scene(name):
@@ -22,7 +22,7 @@ def get_scene(name):
         forward = np.array([0.25, 1.0, 0.0], dtype='f4')
         up = np.array([0.0, 0.0, 1.0], dtype='f4')
         width = height = 800
-    elif name == 'sphere':
+    elif name in ['sphere', 'sphere_ply']:
         ground = np.array([0.0, 0.0, -100.0], dtype='f4')
         fname = os.path.join('data', 'sphere.ply')
         center = np.array([0.0, -300.0, 0], dtype='f4')
@@ -32,6 +32,16 @@ def get_scene(name):
         # forward = np.array([0.0, 0.0, -1.0], dtype='f4')
         # up = np.array([0.0, 1.0, 0.0], dtype='f4')
         width = height = 400
+    elif name == 'sphere_obj':
+        ground = np.array([0.0, 0.0, -20.0], dtype='f4')
+        fname = os.path.join('data', 'sphere.obj')
+        center = np.array([0.0, -50.0, 0], dtype='f4')
+        forward = np.array([0.0, 1.0, 0.0], dtype='f4')
+        up = np.array([0.0, 0.0, 1.0], dtype='f4')
+        # center = np.array([0.0, 0.0, 300], dtype='f4')
+        # forward = np.array([0.0, 0.0, -1.0], dtype='f4')
+        # up = np.array([0.0, 1.0, 0.0], dtype='f4')
+        width = height = 80
     elif name == 'pyramid':
         ground = np.array([0.0, 0.0, 0.0], dtype='f4')
         fname = os.path.join('data', 'pyramid.ply')
@@ -42,7 +52,21 @@ def get_scene(name):
         # forward = np.array([0.0, 1.0, 0.0], dtype='f4')
         # up = np.array([0.0, 0.0, 1.0], dtype='f4')
         width = height = 2
-    p = hothouse.plant_model.PlantModel.from_ply(fname)
+    elif name == 'real':
+        ground = np.array([-0.025391, 5.39746, -0.459961], dtype='f4')
+        fname = os.path.join('data', '387-js261.obj')
+        center = np.array([-0.025391, 4.0, -0.095703], dtype='f4')
+        forward = np.array([0.0, 1.0, 0.0], dtype='f4')
+        up = np.array([0.0, 0.0, 1.0], dtype='f4')
+        width = height = 0.75
+    if fname.endswith('.ply'):
+        p = hothouse.plant_model.PlantModel.from_ply(
+            fname, transmittance=0.075, reflectance=0.075)
+    elif fname.endswith('.obj'):
+        p = hothouse.plant_model.PlantModel.from_obj(
+            fname, transmittance=0.075, reflectance=0.075)
+    else:
+        raise ValueError("Unsure how to handle file: '%s'" % fname)
     scene = Scene(ground=ground)
     scene.add_component(p)
     # Camera
@@ -57,16 +81,17 @@ def get_scene(name):
         
 
 def plot_light(scene, camera, latitude_deg, longitude_deg, date,
-               fname="light.png"):
+               fname="light.png", single_bounce=False):
     # Solar radiation model including atmosphere
-    ppfd_tot = sun_model(latitude_deg, longitude_deg, date)  # W m-2
+    ppfd_tot = solar_ppfd(latitude_deg, longitude_deg, date)  # W m-2
 
     # Blaster representing the sun
     nx = ny = 1024
     sun = scene.get_sun_blaster(latitude_deg, longitude_deg, date,
                                 nx=nx, ny=ny,
                                 direct_ppfd=ppfd_tot['direct'],
-                                diffuse_ppfd=ppfd_tot['diffuse'])
+                                diffuse_ppfd=ppfd_tot['diffuse'],
+                                multibounce=(not single_bounce))
 
     # Compute flux density on scene from sun
     o = camera.compute_flux_density(scene, sun)
@@ -84,17 +109,20 @@ def plot_light(scene, camera, latitude_deg, longitude_deg, date,
 
 
 def iter_plot(scene, camera, latitude, longitude,
-              t_start, t_stop, n_step):
+              t_start, t_stop, n_step, single_bounce=False):
     dates = pd.date_range(t_start, t_stop, periods=n_step)
     for date in dates:
-        plot_light(scene, camera, latitude, longitude, date, fname=None)
+        plot_light(scene, camera, latitude, longitude, date, fname=None,
+                   single_bounce=single_bounce)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--scene', default='plant',
-                        choices=['plant', 'sphere', 'pyramid'])
+                        choices=['plant', 'sphere', 'sphere_ply', 'sphere_obj',
+                                 'pyramid', 'real'])
     parser.add_argument('--iterate', action='store_true')
+    parser.add_argument('--animate', action='store_true')
     parser.add_argument('--nsteps', default=10, type=int)
     # These default to the values for Champaign, IL
     # Sunrise: 2020-06-17  5:23:00
@@ -105,6 +133,7 @@ if __name__ == "__main__":
     parser.add_argument('--time', default='2020-06-17 5:23:00')
     parser.add_argument('--start-time', default='2020-06-17 5:23:00')
     parser.add_argument('--stop-time', default='2020-06-17 19:25:00')
+    parser.add_argument('--single-bounce', action='store_true')
     args = parser.parse_args()
 
     scene, camera = get_scene(args.scene)
@@ -116,7 +145,13 @@ if __name__ == "__main__":
 
     if args.iterate:
         iter_plot(scene, camera, args.latitude, args.longitude,
-                  args.start_time, args.stop_time, args.nsteps)
+                  args.start_time, args.stop_time, args.nsteps,
+                  single_bounce=args.single_bounce)
+    elif args.animate:
+        scene.animate_sun(camera, args.latitude, args.longitude,
+                          args.start_time, args.stop_time, args.nsteps,
+                          fname='light.html')
     else:
         plot_light(scene, camera, args.latitude, args.longitude,
-                   args.time)  # , fname=('%s.png' % args.scene))
+                   args.time, single_bounce=args.single_bounce)
+        # , fname=('%s.png' % args.scene))
