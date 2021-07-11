@@ -52,8 +52,7 @@ class RayBlaster(traitlets.HasTraits):
         )
         return output
 
-    def compute_flux_density(self, scene, light_sources,
-                             any_direction=True):
+    def compute_flux_density(self, scene, light_sources, any_direction=True):
         r"""Compute the flux density on each scene element touched by
         this blaster from a set of light sources.
 
@@ -73,7 +72,8 @@ class RayBlaster(traitlets.HasTraits):
 
         """
         fd_scene = scene.compute_flux_density(
-            light_sources, any_direction=any_direction)
+            light_sources, any_direction=any_direction
+        )
         out = np.zeros(self.nx * self.ny, "f4")
         camera_hits = self.compute_count(scene)
         for ci, component in enumerate(scene.components):
@@ -99,12 +99,18 @@ class OrthographicRayBlaster(RayBlaster):
 
     def __init__(self, *args, **kwargs):
         super(OrthographicRayBlaster, self).__init__(*args, **kwargs)
+        self.update_directions()
+        self.update_origins()
 
+    @traitlets.observe("nx", "ny", "forward")
+    def update_directions(self, change=None):
         # here origin is not the center, but the bottom left
         self._directions = np.zeros((self.nx, self.ny, 3), dtype="f4")
         self._directions[:] = self.forward[None, None, :]
         self.directions = self._directions.view().reshape((self.nx * self.ny, 3))
 
+    @traitlets.observe("nx", "ny", "width", "height", "east", "up", "center")
+    def update_origins(self, change=None):
         self._origins = np.zeros((self.nx, self.ny, 3), dtype="f4")
         offset_x, offset_y = np.mgrid[
             -self.width / 2 : self.width / 2 : self.nx * 1j,
@@ -116,6 +122,26 @@ class OrthographicRayBlaster(RayBlaster):
             + offset_y[..., None] * self.up
         )
         self.origins = self._origins.view().reshape((self.nx * self.ny, 3))
+
+    def annotate_rays(self, scene, skip=64):
+        import pythreejs
+
+        positions = np.empty((1024 * 1024 // (skip * skip), 2, 3))
+        positions[:, 0] = self._origins[::skip, ::skip, :].reshape(
+            positions[:, 0].shape
+        )
+        positions[:, 1] = (
+            self._origins[::skip, ::skip, :]
+            + 100.0 * self._directions[::skip, ::skip, :]
+        ).reshape(positions[:, 0].shape)
+        colors = np.empty((1024 * 1024 // (skip * skip), 2, 3), dtype="f4")
+        colors[:, 0, :] = [0, 0, 0]
+        colors[:, 1, :] = [1, 0, 0]
+
+        lg = pythreejs.LineSegmentsGeometry(positions=positions, colors=colors)
+        lm = pythreejs.LineMaterial(linewidth=10, vertexColors="VertexColors")
+        ls = pythreejs.LineSegments2(lg, lm)
+        scene.scene.add(ls)
 
 
 class SunRayBlaster(OrthographicRayBlaster):
@@ -136,7 +162,7 @@ class SunRayBlaster(OrthographicRayBlaster):
     solar_azimuth = traitlets.CFloat()
     solar_distance = traitlets.CFloat()
     _solpos_info = traittypes.DataFrame()
-    
+
     @traitlets.default("_solpos_info")
     def _solpos_info_default(self):
         return pvlib.solarposition.get_solarposition(
@@ -178,12 +204,10 @@ class SunRayBlaster(OrthographicRayBlaster):
 
         """
         return sun_calc.rotate_u(
-            sun_calc.rotate_u(
-                point,
-                np.radians(90 - self.solar_altitude),
-                self.north),
+            sun_calc.rotate_u(point, np.radians(90 - self.solar_altitude), self.north),
             np.radians(90 - self.solar_azimuth),
-            self.zenith_direction)
+            self.zenith_direction,
+        )
 
     @traitlets.default("forward")
     def _forward_default(self):
@@ -216,7 +240,7 @@ class SunRayBlaster(OrthographicRayBlaster):
         # The "east" used here is not the "east" used elsewhere.
         # This is the east wrt north etc, but we need an east for blasting from elsewhere.
         return -self.solar_rotation(east)
-    
+
 
 class ProjectionRayBlaster(RayBlaster):
     pass

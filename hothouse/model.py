@@ -42,7 +42,7 @@ class Model(traitlets.HasTraits):
     indices = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3), check_dtype("i4")
     )
-    attributes = traittypes.Array(None, allow_none=True)
+    values = traittypes.Array(None, allow_none=True)
     triangles = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3, 3), check_dtype("f4")
     )
@@ -72,29 +72,31 @@ class Model(traitlets.HasTraits):
         triangles = np.array(triangles).swapaxes(1, 2)
         obj = cls(
             vertices=xyz_vert,
-            indices=xyz_faces.astype('i4'),
+            indices=xyz_faces.astype("i4"),
             attributes=colors,
             triangles=triangles,
         )
 
         return obj
 
+    @traitlets.default("values")
+    def _values_default(self):
+        return 0.5 * np.ones((self.indices.shape[0] * 3, 2), dtype="float32")
+
     @property
     def geometry(self):
+        new_vert = self.vertices[self.indices]
+        new_vert = new_vert.reshape((new_vert.size // 3, 3))
         attributes = dict(
-            position=pythreejs.BufferAttribute(self.vertices, normalized=False),
+            position=pythreejs.BufferAttribute(new_vert, normalized=False),
             index=pythreejs.BufferAttribute(
-                self.indices.ravel(order="C").astype("u4"), normalized=False
+                np.arange(new_vert.shape[0]).astype("u4"), normalized=False
             ),
+            uv=pythreejs.BufferAttribute(array=self.values, normalized=False,),
         )
-        if self.attributes is not None:
-            attributes["color"] = pythreejs.BufferAttribute(self.attributes)
-            # Face colors requires
-            # https://speakerdeck.com/yomotsu/low-level-apis-using-three-dot-js?slide=22
-            # and
-            # https://github.com/mrdoob/three.js/blob/master/src/renderers/shaders/ShaderLib.js
         geometry = pythreejs.BufferGeometry(attributes=attributes)
         geometry.exec_three_obj_method("computeFaceNormals")
+        traitlets.link((self, "values"), (attributes["uv"], "array"))
         return geometry
 
     @cached_property
