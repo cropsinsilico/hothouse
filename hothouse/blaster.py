@@ -161,17 +161,18 @@ class SunRayBlaster(OrthographicRayBlaster):
 
     @traitlets.default("solar_altitude")
     def _default_solar_altitude(self):
-        solar_altitude = self._solpos_info["apparent_elevation"][0]
+        solar_altitude = self._solpos_info["apparent_elevation"].iloc[0]
         if solar_altitude < 0:
             raise ValueError(
-                "For the provided lat, long, date, & time "
-                "the sun will be below the horizon."
+                f"For the provided lat ({self.latitude}), "
+                f"long ({self.longitude}), date, & time "
+                f"({self.date}) the sun will be below the horizon."
             )
         return solar_altitude
 
     @traitlets.default("solar_azimuth")
     def _default_solar_azimuth(self):
-        return self._solpos_info["azimuth"][0]
+        return self._solpos_info["azimuth"].iloc[0]
 
     @property
     def zenith_direction(self):
