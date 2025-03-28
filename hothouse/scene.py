@@ -3,7 +3,7 @@ import traitlets
 import pythreejs
 import numpy as np
 import pvlib
-from IPython.core.display import display
+# from IPython.core.display import display
 
 from .model import Model
 from .blaster import RayBlaster, OrthographicRayBlaster, SunRayBlaster
