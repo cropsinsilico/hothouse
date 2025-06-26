@@ -32,6 +32,34 @@ class RayBlaster(traitlets.HasTraits):
     intensity = traitlets.CFloat(1.0)
     diffuse_intensity = traitlets.CFloat(0.0)
     multibounce = traitlets.CBool(False)
+    period = traittypes.Array(
+        np.zeros((3,), "f4")
+    ).valid(check_dtype("f4"), check_shape(3))
+    periodic_direction = traittypes.Array(np.array([
+        [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]
+    ], "f4")).valid(check_dtype("f4"), check_shape(3, 3))
+    periodic_count = traittypes.Array(np.array([1, 1, 1], "i4")).valid(
+        check_dtype("i4"), check_shape(3))
+
+    @classmethod
+    def from_scene(cls, scene, **kwargs):
+        r"""Create a blaster for a scene by setting missing parameters
+        that optimize the coverage of the scene.
+
+        Args:
+            scene (hothouse.scene.Scene): Scene to customize the blaster
+                for.
+
+        Returns:
+            RayBlaster: Created blaster.
+
+        """
+        raise NotImplementedError
+
+    @cached_property
+    def is_periodic(self):
+        r"""bool: True if the blaster will be replicated periodically."""
+        return np.any(self.period > 0)
 
     @property
     def ray_intensity(self):
@@ -43,20 +71,38 @@ class RayBlaster(traitlets.HasTraits):
         if self.multibounce:
             callback_handler = RayCollisionMultiBounce(
                 self.origins.shape[0], 10,
-                [c.transmittance for c in scene.components],
-                [c.reflectance for c in scene.components])
+                scene.transmittance, scene.reflectance)
         else:
             callback_handler = None
+        dists = None
+        if self.is_periodic:
+            dists = np.empty(self.origins.shape[0], 'float32')
+            dists.fill(1e37)
         output = scene.embree_scene.run(
             self.origins,
             self.directions,
+            dists=dists,
             query=query_type._value_,
             output=verbose_output,
             callback_handler=callback_handler
         )
+        if self.is_periodic:
+            from hothouse.scene import PeriodicScene
+            shifts = PeriodicScene.get_periodic_shifts(
+                self.period, self.periodic_direction,
+                self.periodic_count)
+            for shift in shifts:
+                output = scene.embree_scene.run(
+                    self.origins + shift,
+                    self.directions,
+                    dists=dists,
+                    query=query_type._value_,
+                    output=verbose_output,
+                    callback_handler=callback_handler
+                )
         if self.multibounce and isinstance(output, dict):
             output['bounces'] = callback_handler.bounces
-        return output
+        return scene.post_cast(output)
 
     def compute_distance(self, scene):
         output = self.cast_once(
@@ -158,6 +204,13 @@ class SunRayBlaster(OrthographicRayBlaster):
     multibounce = traitlets.CBool(True)
     scene_limits = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3), check_dtype("f4"))
+
+    @classmethod
+    def get_solar_direction(cls, latitude, longitude, date, up, north):
+        instance = cls(latitude=latitude, longitude=longitude,
+                       date=date, zenith=(10 * up),
+                       ground=np.zeros((3,), "f4"), north=north)
+        return instance.forward
 
     @traitlets.default("_solpos_info")
     def _solpos_info_default(self):
@@ -286,7 +339,56 @@ class SunRayBlaster(OrthographicRayBlaster):
 
 
 class ProjectionRayBlaster(RayBlaster):
-    pass
+    fov_width = traitlets.CFloat(90.0)
+    fov_height = traitlets.CFloat(90.0)
+    center = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
+    forward = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
+    up = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
+    east = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
+    width = traitlets.CFloat(1.0)
+    height = traitlets.CFloat(1.0)
+    nx = traitlets.CInt(512)
+    ny = traitlets.CInt(512)
+
+    @cached_property
+    def camera_distance(self):
+        r"""float: Distance of the camera from the image plane."""
+        return (
+            (self.width / 2.0)
+            / np.tan(np.radians(self.fov_width / 2.0))
+        )
+
+    @cached_property
+    def camera_origin(self):
+        r"""np.ndarray: Position of the camera."""
+        return self.center - self.camera_distance * self.forward
+
+    @traitlets.default("east")
+    def _default_east(self):
+        return np.cross(self.forward, self.up)
+
+    @traitlets.default("directions")
+    def _default_directions(self):
+        self._directions = self.origins - self.camera_origin
+        norms = np.linalg.norm(self.origins, axis=1)
+        for i in range(3):
+            self._directions[:, i] /= norms
+        return self._directions.view()
+
+    @traitlets.default("origins")
+    def _default_origins(self):
+        # here origin is not the center, but the bottom left
+        self._origins = np.zeros((self.nx, self.ny, 3), dtype="f4")
+        offset_x, offset_y = np.mgrid[
+            (-self.width / 2):(self.width / 2):(self.nx * 1j),
+            (-self.height / 2):(self.height / 2):(self.ny * 1j),
+        ]
+        self._origins[:] = (
+            self.center
+            + offset_x[..., None] * self.east
+            + offset_y[..., None] * self.up
+        )
+        return self._origins.view().reshape((self.nx * self.ny, 3))
 
 
 class SphericalRayBlaster(RayBlaster):
