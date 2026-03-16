@@ -53,6 +53,10 @@ class Scene(traitlets.HasTraits):
         return component_counts
 
     @property
+    def ncomponents(self):
+        return len(self.components)
+
+    @property
     def transmittance(self):
         return [c.transmittance for c in self.components]
 
@@ -340,36 +344,52 @@ class PeriodicScene(Scene):
     direction = traittypes.Array(np.array([
         [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]
     ], "f4")).valid(check_dtype("f4"), check_shape(3, 3))
-    count = traittypes.Array(np.array([1, 1, 1], "i4")).valid(
+    count = traittypes.Array(np.array([0, 0, 0], "i4")).valid(
         check_dtype("i4"), check_shape(3))
+    dont_reflect = traitlets.Bool(False)
+    dont_center = traitlets.Bool(False)
     buffer_as_primary = traitlets.Bool(False)
 
     def __init__(self, *args, **kwargs):
         self._buffer_meshes = []
-        self._buffer_component_map = {}
-        self._buffer_component_triangles = []
-        self._embree_scene = kwargs.get('embree_scene',
-                                        rtcs.EmbreeScene())
         super(PeriodicScene, self).__init__(*args, **kwargs)
 
     @property
+    def nperiodic_copies(self):
+        out = self.periodic_shifts.shape[0]
+        if self.dont_reflect:
+            out_exp = np.prod(self.count) - 1
+        else:
+            out_exp = np.prod(2 * self.count + 1) - 1
+        assert out == out_exp
+        return out
+
+    @property
+    def ncomponents_periodic(self):
+        ncomponents = self.ncomponents
+        return ncomponents * self.nperiodic_copies
+
+    @property
     def transmittance(self):
-        out = super(PeriodicScene, self).transmittance
-        self.add_component_buffers()
-        for i, v in self._buffer_component_map.items():
-            out += [self.components[i].transmittance for _ in v]
+        out = []
+        for c in self.components:
+            out += [
+                c.transmittance for _ in range(self.nperiodic_copies + 1)
+            ]
         return out
 
     @property
     def reflectance(self):
-        out = super(PeriodicScene, self).reflectance
-        self.add_component_buffers()
-        for i, v in self._buffer_component_map.items():
-            out += [self.components[i].reflectance for _ in v]
+        out = []
+        for c in self.components:
+            out += [
+                c.reflectance for _ in range(self.nperiodic_copies + 1)
+            ]
         return out
 
     @classmethod
-    def get_periodic_shifts(cls, period, direction, count):
+    def get_periodic_shifts(cls, period, direction, count,
+                            dont_reflect=False, dont_center=False):
         import itertools
         shifts = []
         opts = []
@@ -377,8 +397,16 @@ class PeriodicScene(Scene):
             if period[axis] == 0:
                 opts.append([0])
                 continue
+            if dont_reflect:
+                count_lh = -(count[axis] // 2)
+                count_rh = count[axis] + count_lh
             else:
-                opts.append(list(range(-count[axis], count[axis] + 1)))
+                count_lh = -count[axis]
+                count_rh = count[axis] + 1
+            if dont_center:
+                count_rh = count_rh - count_lh
+                count_lh = 0
+            opts.append(list(range(count_lh, count_rh)))
         for xbuffer, ybuffer, zbuffer in itertools.product(*opts):
             if xbuffer == 0 and ybuffer == 0 and zbuffer == 0:
                 continue
@@ -386,46 +414,36 @@ class PeriodicScene(Scene):
             def _shift(ibuffer, axis):
                 return ibuffer * period[axis] * direction[axis, :]
 
-            shifts.append(_shift(xbuffer, 0)
-                          + _shift(ybuffer, 1)
-                          + _shift(zbuffer, 2))
+            ishift = (
+                _shift(xbuffer, 0)
+                + _shift(ybuffer, 1)
+                + _shift(zbuffer, 2)
+            )
+            shifts.append(ishift)
         return np.vstack(shifts)
 
     def post_cast(self, output):
-        if self.buffer_as_primary:
-            for ci, v in self._buffer_component_map.items():
-                for ci_per in v:
-                    output["geomID"][output["geomID"] == ci_per] = ci
-            for irange, jrange in self._buffer_component_triangles[::-1]:
-                output["primID"][output["primID"] >= jrange.start] -= (
-                    jrange.start - irange.start)
+        nperiodic = self.nperiodic_copies
+        for compID in range(len(self.components)):
+            geomID = compID * (nperiodic + 1)
+            output["geomID"][output["geomID"] == geomID] = compID
+            bufferID = (compID if self.buffer_as_primary else -1)
+            for vgeomID in range(geomID + 1, nperiodic + 1):
+                output["geomID"][output["geomID"] == vgeomID] = bufferID
         return output
 
-    def add_component_buffers(self):
-        if self._buffer_meshes:
-            return
-        shifts = self.get_periodic_shifts(self.period, self.direction,
-                                          self.count)
-        j = len(self.components)
-        icount = 0
-        jcount = sum([component.triangles.shape[0]
-                      for component in self.components])
-        for i, component in enumerate(self.components):
-            irange = range(icount, icount + component.triangles.shape[0])
-            self._buffer_component_map[i] = []
-            for shift in shifts:
-                jrange = range(jcount, jcount + component.triangles.shape[0])
-                self._buffer_meshes.append(
-                    TriangleMesh(self._embree_scene,
-                                 component.triangles + shift)
-                )
-                self._buffer_component_map[i].append(j)
-                self._buffer_component_triangles.append((irange, jrange))
-                j += 1
-                jcount += component.triangles.shape[0]
-            icount += component.triangles.shape[0]
+    @cached_property
+    def periodic_shifts(self):
+        return self.get_periodic_shifts(
+            self.period, self.direction, self.count,
+            dont_reflect=self.dont_reflect,
+            dont_center=self.dont_center,
+        )
 
-    @property
-    def embree_scene(self):
-        self.add_component_buffers()
-        return self._embree_scene
+    def add_component(self, component):
+        super(PeriodicScene, self).add_component(component)
+        for shift in self.periodic_shifts:
+            self._buffer_meshes.append(
+                TriangleMesh(self.embree_scene,
+                             component.triangles + shift)
+            )
