@@ -428,7 +428,7 @@ class PeriodicScene(Scene):
             geomID = compID * (nperiodic + 1)
             output["geomID"][output["geomID"] == geomID] = compID
             bufferID = (compID if self.buffer_as_primary else -1)
-            for vgeomID in range(geomID + 1, nperiodic + 1):
+            for vgeomID in range(geomID + 1, geomID + nperiodic + 1):
                 output["geomID"][output["geomID"] == vgeomID] = bufferID
         return output
 

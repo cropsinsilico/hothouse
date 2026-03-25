@@ -8,7 +8,7 @@ from Cython.Build import cythonize
 import numpy
 import sys
 import os
-from pkg_resources import resource_filename
+import importlib.resources
 
 
 # These routines are taken from yt
@@ -18,7 +18,7 @@ def in_conda_env():
 
 def check_for_pyembree():
     try:
-        fn = resource_filename("pyembree", "rtcore.pxd")
+        fn = importlib.resources.files("pyembree") / "rtcore.pxd"
     except ImportError:
         return None
     return os.path.dirname(fn)
