@@ -3,15 +3,11 @@ import functools
 import traittypes
 import traitlets
 from itertools import tee
-import pythreejs
-
-from plyfile import PlyData, PlyElement
-
 from .traits_support import check_shape, check_dtype
 
-from yggdrasil.communication import open_file_comm
 
 cached_property = getattr(functools, "cached_property", property)
+
 
 # From itertools cookbook
 def pairwise(iterable):
@@ -35,19 +31,34 @@ def _ensure_triangulated(faces):
 
 
 class Model(traitlets.HasTraits):
-    origin = traittypes.Array(None, allow_none=True).valid(
-        check_shape(3), check_dtype("f4")
-    )
+    r"""Container for 3D geometries that can be added to scenes.
+
+    Args:
+        vertices (np.ndarray): Set of vertices used by the geometry.
+        indices (np.ndarray): Indices of vertices comprising each face
+            in the geometry.
+        attributes (np.ndarray, optional): Attributes of each face in
+            the geometry (e.g. color).
+        triangles (np.ndarray, optional): Positions of vertices that
+            make up each face.
+        normals (np.ndarray, optional): Normal unit vectors for each
+            face.
+        vertex_normals (np.ndarray, optional): Normal unit vectors for
+            each vertex.
+        transmittance (np.ndarray, optional): Transmittance of each face.
+        reflectance (np.ndarray, optional): Reflectance of each face.
+
+    """
     vertices = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3), check_dtype("f4")
     )
     indices = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3), check_dtype("i4")
     )
-    attributes = traittypes.Array(None, allow_none=True)
     triangles = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3, 3), check_dtype("f4")
     )
+    attributes = traittypes.Array(None, allow_none=True)
     normals = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3), check_dtype("f4")
     )
@@ -60,20 +71,58 @@ class Model(traitlets.HasTraits):
     reflectance = traittypes.Array(None, allow_none=True).valid(
         check_dtype("f4"))
 
+    @traitlets.default("triangles")
+    def _default_triangles(self):
+        if not (self.trait_has_value("indices")
+                and self.trait_has_value("vertices")):
+            raise ValueError("Either indices and vertices or triangles "
+                             "must be provided")
+        return self.vertices[self.indices, :]
+
+    @traitlets.default("indices")
+    def _default_indices(self):
+        return np.arange(self.triangles.shape[0] * 3, dtype="i4").reshape(
+            self.triangles.shape[0], 3)
+
+    @traitlets.default("vertices")
+    def _default_vertices(self):
+        return self.triangles.reshape.reshape(
+            (self.triangles.shape[0], 9))
+
+    @traitlets.default("normals")
+    def _default_normals(self):
+        r"""Array of the normal vectors for the triangles in this model."""
+        v10 = self.triangles[:, 1, :] - self.triangles[:, 0, :]
+        v20 = self.triangles[:, 2, :] - self.triangles[:, 0, :]
+        out = np.cross(v10, v20)
+        if isinstance(self.vertex_normals, np.ndarray):
+            # Direction from vertex normals
+            mask = (np.einsum("ij, ij->i", out,
+                              np.mean(self.vertex_normals, axis=1)) < 0)
+            out[mask] *= -1
+        return out
+
+    @cached_property
+    def areas(self):
+        r"""Array of areas for the triangles in this model."""
+        return 0.5 * np.linalg.norm(self.normals, axis=1)
+
     @classmethod
     def from_obj(cls, filename, transmittance=None, reflectance=None):
-        # with open_file_comm(filename, 'r', filetype='obj') as comm:
-        #     flag, obj = comm.recv()
-        #     assert(flag)
-        # xyz_vert = np.asarray([[v[k] for k in ['x', 'y', 'z']]
-        #                        for v in obj['vertices']],
-        #                       dtype='f4')
-        # xyz_faces = np.asarray([[v['vertex_index'] for v in f]
-        #                         for f in obj['faces']], dtype='i4')
-        # triangles = np.asarray(obj.mesh, dtype='f4')
-        # vertex_normals = obj.vertex_normals
-        # if vertex_normals is not None:
-        #     vertex_normals = np.asarray(vertex_normals, dtype='f4')
+        r"""Create a model from a 3D mesh described by an ObjWavefront
+        file.
+
+        Args:
+            filename (str): Path to ObjWavefront file.
+            transmittance (np.ndarray, optional): Transmittance of each
+                face in the file.
+            reflectance (np.ndarray, optional): Reflectance of each face
+                in the file.
+
+        Returns:
+            Model: Model containing the loaded geometry.
+
+        """
         import pywavefront
         obj = pywavefront.Wavefront(filename, collect_faces=True)
         xyz_vert = np.asarray(obj.vertices, dtype='f4')
@@ -103,12 +152,11 @@ class Model(traitlets.HasTraits):
                         vertex_data[:, :, i2:(i2 + 3)])
         xyz_faces = np.concatenate(xyz_faces, axis=0)
         triangles = np.concatenate(triangles, axis=0)
-        print('triangles', np.min(xyz_vert, axis=0), np.max(xyz_vert, axis=0))
         vertex_normals = np.concatenate(vertex_normals, axis=0)
         colors = np.concatenate(colors, axis=0)
-        if isinstance(transmittance, (float, np.float)):
+        if isinstance(transmittance, float):
             transmittance = transmittance * np.ones(triangles.shape[0], 'f4')
-        if isinstance(reflectance, (float, np.float)):
+        if isinstance(reflectance, float):
             reflectance = reflectance * np.ones(triangles.shape[0], 'f4')
         out = cls(
             vertices=xyz_vert,
@@ -123,7 +171,21 @@ class Model(traitlets.HasTraits):
 
     @classmethod
     def from_ply(cls, filename, transmittance=None, reflectance=None):
+        r"""Create a model from a 3D mesh described by a ply file.
+
+        Args:
+            filename (str): Path to ply file.
+            transmittance (np.ndarray, optional): Transmittance of each
+                face in the file.
+            reflectance (np.ndarray, optional): Reflectance of each face
+                in the file.
+
+        Returns:
+            Model: Model containing the loaded geometry.
+
+        """
         # This is probably not the absolute best way to do this.
+        from plyfile import PlyData
         plydata = PlyData.read(filename)
         vertices = plydata["vertex"][:]
         faces = plydata["face"][:]
@@ -140,13 +202,14 @@ class Model(traitlets.HasTraits):
         colors = None
         if "diffuse_red" in vertices.dtype.names:
             colors = np.stack(
-                [vertices["diffuse_{}".format(c)] for c in ("red", "green", "blue")],
+                [vertices["diffuse_{}".format(c)]
+                 for c in ("red", "green", "blue")],
                 axis=-1,
             )
         triangles = np.array(triangles).swapaxes(1, 2)
-        if isinstance(transmittance, (float, np.float)):
+        if isinstance(transmittance, float):
             transmittance = transmittance * np.ones(triangles.shape[0], 'f4')
-        if isinstance(reflectance, (float, np.float)):
+        if isinstance(reflectance, float):
             reflectance = reflectance * np.ones(triangles.shape[0], 'f4')
         obj = cls(
             vertices=xyz_vert,
@@ -156,13 +219,15 @@ class Model(traitlets.HasTraits):
             transmittance=transmittance,
             reflectance=reflectance
         )
-
         return obj
 
     @property
     def geometry(self):
+        r"""pythreejs.BufferGeometry: Model geometry."""
+        import pythreejs
         attributes = dict(
-            position=pythreejs.BufferAttribute(self.vertices, normalized=False),
+            position=pythreejs.BufferAttribute(
+                self.vertices, normalized=False),
             index=pythreejs.BufferAttribute(
                 self.indices.ravel(order="C").astype("u4"), normalized=False
             ),
@@ -177,25 +242,13 @@ class Model(traitlets.HasTraits):
         geometry.exec_three_obj_method("computeFaceNormals")
         return geometry
 
-    @traitlets.default("normals")
-    def _default_normals(self):
-        r"""Array of the normal vectors for the triangles in this model."""
-        v10 = self.triangles[:, 1, :] - self.triangles[:, 0, :]
-        v20 = self.triangles[:, 2, :] - self.triangles[:, 0, :]
-        out = np.cross(v10, v20)
-        if isinstance(self.vertex_normals, np.ndarray):
-            # Direction from vertex normals
-            mask = (np.einsum("ij, ij->i", out,
-                              np.mean(self.vertex_normals, axis=1)) < 0)
-            out[mask] *= -1
-        return out
-
-    @cached_property
-    def areas(self):
-        r"""Array of areas for the triangles in this model."""
-        return 0.5 * np.linalg.norm(self.normals, axis=1)
-
     def translate(self, delta):
+        r"""Shift the vertices in the model geometry.
+
+        Args:
+            delta (np.ndarray): Shift to apply.
+
+        """
         self.vertices = self.vertices + delta
 
     def rotate(self, q, origin="barycentric"):

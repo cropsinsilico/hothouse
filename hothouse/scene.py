@@ -7,17 +7,40 @@ import pvlib
 # from IPython.core.display import display
 
 from .model import Model
-from .blaster import RayBlaster, OrthographicRayBlaster, SunRayBlaster
+from .blaster import (
+    QueryType, RayBlaster, OrthographicRayBlaster, SunRayBlaster,
+)
 from .traits_support import check_shape, check_dtype
 from .sun_calc import solar_ppfd
 
-from pyembree import rtcore_scene as rtcs
-from pyembree.mesh_construction import TriangleMesh
+from embreex.mesh_construction import TriangleMesh
+
+# Use native embreex scene
+from embreex import rtcore_scene as rtcs
+EmbreeScene = rtcs.EmbreeScene
+
+# Use local subclass of embreex scene w/ support for callbacks
+# from .callback_handler import CallbackScene
+# EmbreeScene = CallbackScene
 
 cached_property = getattr(functools, "cached_property", property)
 
 
 class Scene(traitlets.HasTraits):
+    r"""Container for component geometries that will be traced
+    and properties of the context in which they reside.
+
+    Args:
+        ground (np.ndarray, optional): Scene center.
+        up (np.ndarray, optional): Normal unit vector for the ground.
+        north (np.ndarray, optional): Unit vector for the north cardinal
+            direction.
+        components (list, optional): 3D components in the scene.
+        meshes (list, optional): 3D geometries for the components in the
+            scene.
+        embree_scene (pyembree.EmbreeScene, optional):
+
+    """
 
     ground = traittypes.Array(np.array([0.0, 0.0, 0.0], "f4")).valid(
         check_dtype("f4"), check_shape(3))
@@ -26,23 +49,50 @@ class Scene(traitlets.HasTraits):
     north = traittypes.Array(np.array([0.0, 1.0, 0.0], "f4")).valid(
         check_dtype("f4"), check_shape(3))
     components = traitlets.List(trait=traitlets.Instance(Model))
-    blasters = traitlets.List(trait=traitlets.Instance(RayBlaster))
     meshes = traitlets.List(trait=traitlets.Instance(TriangleMesh))
-    embree_scene = traitlets.Instance(rtcs.EmbreeScene, args=tuple())
+    embree_scene = traitlets.Instance(EmbreeScene, args=tuple())
 
     # TODO: Add surface for ground so that reflection from ground
     # is taken into account
 
-    def post_cast(self, output):
+    def post_cast(self, query_type, output):
+        r"""Finalize the results from running the ray tracer.
+
+        Args:
+            query_type (QueryType): Raytrace query type of the output.
+            output (object): Raytracer result.
+
+        Returns:
+            object: Finalized raytracer result.
+
+        """
         return output
 
     def add_component(self, component):
+        r"""Add a component to the scene.
+
+        Args:
+            component (hothouse.model.Model): 3D component.
+
+        """
         # Force traitlet update
         self.components = self.components + [component]
         self.meshes.append(
             TriangleMesh(self.embree_scene, component.triangles))
 
     def compute_hit_count(self, blaster):
+        r"""Run the raytracer to determine how many rays will hit each
+        component face in the scene.
+
+        Args:
+            blaster (hothouse.blaster.RayBlaster): Blaster containing
+                rays to trace.
+
+        Returns:
+            dict: Mapping between component index and arrays of hit
+                counts for each face in the component geometry.
+
+        """
         output = blaster.compute_count(self)
         component_counts = {}
         for ci, component in enumerate(self.components):
@@ -54,14 +104,17 @@ class Scene(traitlets.HasTraits):
 
     @property
     def ncomponents(self):
+        r"""int: Number of components in the scene."""
         return len(self.components)
 
     @property
     def transmittance(self):
+        r"""list: Tranmittance values for each component's faces."""
         return [c.transmittance for c in self.components]
 
     @property
     def reflectance(self):
+        r"""list: Reflectance values for each component's faces."""
         return [c.reflectance for c in self.components]
 
     @cached_property
@@ -80,8 +133,49 @@ class Scene(traitlets.HasTraits):
         limits = np.vstack([xx.flatten(), yy.flatten(), zz.flatten()]).T
         return limits
 
+    def compute_solar_ppfd(self, latitude, longitude, date,
+                           direct_ppfd=None, diffuse_ppfd=None,
+                           any_direction=True, **kwargs):
+        r"""Compute the photon flux density on each face in the scene
+        from solar irradiance for a given location and time/date.
+
+        Args:
+            latitude (float): Latitude (in degrees) of the scene.
+            longitude (float): Longitude (in degrees) of the scene.
+            date (datetime.datetime): Time when PPFD should be calculated.
+                This determines the incidence angle of light from the
+                sun.
+            direct_ppfd (float, optional): Direct Photosynthetic
+                Photon Flux Density (PPFD) at the surface of the
+                Earth for the specified location and time. If not
+                provided, the direct_ppfd will be calculated based on the
+                location and time/date.
+            diffuse_ppfd (float, optional): Diffuse Photosynthetic
+                Photon Flux Density (PPFD) at the surface of the
+                Earth for the specified location and time. If not
+                provided, the diffuse_ppfd will be calculated based on
+                the location and time/date.
+            any_direction (bool, optional): If True, light is deposited
+                on component reguardless of if the blaster rays hit the
+                front or back of a component surface. If False, light
+                is only deposited if the blaster rays hit the front.
+                Defaults to True.
+            **kwargs: Additional keyword arguments are passed to the
+                SunRayBlaster constructor.
+
+        Returns:
+            dict: Mapping from scene component to an array of photon flux
+                density values for each triangle in the component.
+
+        """
+        rb = self.get_sun_blaster(latitude, longitude, date,
+                                  direct_ppfd=direct_ppfd,
+                                  diffuse_ppfd=diffuse_ppfd, **kwargs)
+        return self.compute_flux_density(rb, any_direction=any_direction)
+
     def get_sun_blaster(self, latitude, longitude, date,
-                        direct_ppfd=1.0, diffuse_ppfd=1.0, **kwargs):
+                        direct_ppfd=None, diffuse_ppfd=None,
+                        zenith=None, **kwargs):
         r"""Get a sun blaster that is adjusted for this scene so that
         the blaster will never intercept a component in the scene. This
         distance is determined by computing the maximum distance of any
@@ -95,33 +189,40 @@ class Scene(traitlets.HasTraits):
                 sun.
             direct_ppfd (float, optional): Direct Photosynthetic
                 Photon Flux Density (PPFD) at the surface of the
-                Earth for the specified location and time. Defaults
-                to 1.0.
+                Earth for the specified location and time. If not
+                provided, the direct_ppfd will be calculated based on the
+                location and time/date.
             diffuse_ppfd (float, optional): Diffuse Photosynthetic
                 Photon Flux Density (PPFD) at the surface of the
-                Earth for the specified location and time. Defaults
-                to 1.0.
+                Earth for the specified location and time. If not
+                provided, the diffuse_ppfd will be calculated based on
+                the location and time/date.
+            zenith (np.ndarray): Position directly above 'ground' at
+                distance that sun blaster should be placed.
+            **kwargs: Additional keyword arguments are passed to the
+                SunRayBlaster constructor.
 
         Returns:
             SunRayBlaster: Blaster tuned to this scene.
 
         """
-        # TODO: Calculate direct/diffuse ppfd from lat/long/date
-        # using pvi if not provided
-        max_distance2 = 0.0
-        for c in self.components:
-            max_distance2 = max(
-                max_distance2,
-                np.max(np.sum((c.vertices-self.ground)**2, axis=1)))
-        max_distance = np.sqrt(max_distance2)
-        kwargs.setdefault('zenith', self.up * max_distance + self.ground)
-        kwargs.setdefault('diffuse_intensity', diffuse_ppfd)
+        if zenith is None:
+            max_distance2 = 0.0
+            for c in self.components:
+                max_distance2 = max(
+                    max_distance2,
+                    np.max(np.sum((c.vertices-self.ground)**2, axis=1)))
+            max_distance = np.sqrt(max_distance2)
+            zenith = self.up * max_distance + self.ground
+        if direct_ppfd is not None:
+            kwargs['intensity_density'] = direct_ppfd
+        if diffuse_ppfd is not None:
+            kwargs['diffuse_intensity'] = diffuse_ppfd
         kwargs.setdefault('scene_limits', self.limits)
         blaster = SunRayBlaster(latitude=latitude,
                                 longitude=longitude, date=date,
                                 ground=self.ground, north=self.north,
-                                **kwargs)
-        blaster.intensity = direct_ppfd * blaster.width * blaster.height
+                                zenith=zenith, **kwargs)
         return blaster
 
     def animate_sun(self, camera, latitude, longitude,
@@ -337,6 +438,29 @@ class Scene(traitlets.HasTraits):
 
 
 class PeriodicScene(Scene):
+    r"""Container for a scene in which components are repeated.
+
+    Args:
+        period (np.ndarray, optional): Period of repetition for
+            components in each direction.
+        direction (np.ndarray, optional): Unit vectors for directions
+            over which components will be repeated.
+        count (np.ndarray, optional): Number of times that components
+            will be repeated in each direction.
+        dont_reflect (bool, optional): If True, the components will
+            only be repeated in the provided directions. If False, the
+            components will be repeated in both the provided directions
+            and the reflections of those directions.
+        dont_center (bool, optional): If False, the periodic components
+            will be added such that the original components remain as
+            close to the center of the scene as possible without modifying
+            their original positions. If True, the periodic components
+            will all be added in the provided directions.
+        buffer_as_primary (bool, optional): If True, hits of periodic
+            components will be treated as the original components during
+            ray tracing.
+
+    """
 
     period = traittypes.Array(
         np.zeros((3,), "f4")
@@ -356,6 +480,8 @@ class PeriodicScene(Scene):
 
     @property
     def nperiodic_copies(self):
+        r"""int: Number of periodic copies of each component in the
+        scene."""
         out = self.periodic_shifts.shape[0]
         if self.dont_reflect:
             out_exp = np.prod(self.count) - 1
@@ -366,11 +492,14 @@ class PeriodicScene(Scene):
 
     @property
     def ncomponents_periodic(self):
+        r"""int: Total number of periodic components in the scene."""
         ncomponents = self.ncomponents
         return ncomponents * self.nperiodic_copies
 
     @property
-    def transmittance(self):
+    def transmittance_periodic(self):
+        r"""list: Tranmittance values for each component's faces
+        including periodic components."""
         out = []
         for c in self.components:
             out += [
@@ -379,7 +508,9 @@ class PeriodicScene(Scene):
         return out
 
     @property
-    def reflectance(self):
+    def reflectance_periodic(self):
+        r"""list: Reflectance values for each component's faces
+        including periodic components."""
         out = []
         for c in self.components:
             out += [
@@ -390,6 +521,26 @@ class PeriodicScene(Scene):
     @classmethod
     def get_periodic_shifts(cls, period, direction, count,
                             dont_reflect=False, dont_center=False):
+        r"""Get the shifts that should be applied to plants.
+
+        Args:
+            period (np.ndarray): Length of the period along each
+                direction.
+            direction (np.ndarray): Unit vector for the directions
+                along which the period should be applied.
+            count (np.ndarray): Number of times the period should be
+                repeated in each direction.
+            include_origin (bool, optional): If True, include the origin
+                in the returned shifts.
+            dont_reflect (bool, optional): If True, the shifts will only
+                occur in the positive direction along each axis.
+            dont_center (bool, optional): If True, this shifts will not
+                be centered on the origin.
+
+        Returns:
+            np.ndarray: Shifts in each coordinate that should be applied.
+
+        """
         import itertools
         shifts = []
         opts = []
@@ -422,18 +573,37 @@ class PeriodicScene(Scene):
             shifts.append(ishift)
         return np.vstack(shifts)
 
-    def post_cast(self, output):
+    def post_cast(self, query_type, output):
+        r"""Finalize the results from running the ray tracer.
+
+        Args:
+            query_type (QueryType): Raytrace query type of the output.
+            output (object): Raytracer result.
+
+        Returns:
+            object: Finalized raytracer result.
+
+        """
         nperiodic = self.nperiodic_copies
+        ids = None
+        if isinstance(output, dict):
+            ids = output["geomID"]
+        elif query_type == QueryType.INTERSECT:
+            # TODO This isn't actually what pyembree outputs
+            ids = output
+        else:
+            return output
         for compID in range(len(self.components)):
             geomID = compID * (nperiodic + 1)
-            output["geomID"][output["geomID"] == geomID] = compID
+            ids[ids == geomID] = compID
             bufferID = (compID if self.buffer_as_primary else -1)
             for vgeomID in range(geomID + 1, geomID + nperiodic + 1):
-                output["geomID"][output["geomID"] == vgeomID] = bufferID
+                ids[ids == vgeomID] = bufferID
         return output
 
     @cached_property
     def periodic_shifts(self):
+        r"""np.ndarray: Shifts for periodic components."""
         return self.get_periodic_shifts(
             self.period, self.direction, self.count,
             dont_reflect=self.dont_reflect,
@@ -441,6 +611,12 @@ class PeriodicScene(Scene):
         )
 
     def add_component(self, component):
+        r"""Add a component to the scene.
+
+        Args:
+            component (hothouse.model.Model): 3D component.
+
+        """
         super(PeriodicScene, self).add_component(component)
         for shift in self.periodic_shifts:
             self._buffer_meshes.append(

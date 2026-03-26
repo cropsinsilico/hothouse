@@ -11,6 +11,9 @@ except ImportError:
     __version__ = "unknown version"
     __version_tuple__ = (0, 0, "unknown version")
 
-from .plant_model import PlantModel
+from .model import Model
 from .blaster import OrthographicRayBlaster, SunRayBlaster
 from .scene import Scene
+
+
+__all__ = ["Scene", "Model", "OrthographicRayBlaster", "SunRayBlaster"]

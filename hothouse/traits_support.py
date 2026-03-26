@@ -1,9 +1,19 @@
-import numpy as np
-import traittypes
 import traitlets
 
 
 def check_shape(*dimensions):
+    r"""Factory to return a valiator to check the shape of an ndarray
+    trait.
+
+    Args:
+        *dimensions: Arguments are treated as sizes in each dimension.
+
+    Returns:
+        callable: Validator that takes a traitlets.TraitType and its
+            value as input.
+
+    """
+
     def validator(trait, value):
         if value is None:
             return value
@@ -24,12 +34,25 @@ def check_shape(*dimensions):
 
 
 def check_dtype(dtype):
+    r"""Factory to return a valiator to check the shape of an ndarray
+    trait.
+
+    Args:
+        dtype (np.dtype): Datatype that the validator should check for.
+
+    Returns:
+        callable: Validator that takes a traitlets.TraitType and its
+            value as input.
+
+    """
+
     def validator(trait, value):
         if value is None:
             return value
         if value.dtype != dtype:
             raise traitlets.TraitError(
-                f"{trait.name}: expected dtype {dtype} but got " f"{value.dtype}"
+                f"{trait.name}: expected dtype {dtype} but got "
+                f"{value.dtype}"
             )
         return value
 
