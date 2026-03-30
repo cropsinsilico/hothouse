@@ -51,14 +51,13 @@ classifiers = [
   "Intended Audience :: Developers",
   "Natural Language :: English",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
-requires-python = ">= 3.9"
+requires-python = ">= 3.10"
 
 # [project.scripts]
 # hothouse = "hothouse.cli:main"
@@ -74,11 +73,12 @@ Changelog = "https://github.com/matthewturk/hothouse/blob/main/HISTORY.rst"
 
 [project.optional-dependencies]
 dev = [
+  'flake8',
   'pytest',
   'pytest-cov',
-  'sphinx',
-  'flake8',
   'pytz',
+  'sphinx',
+  'tox',
 ]
 
 [tool.setuptools]
@@ -137,6 +137,16 @@ exclude_lines = [
   "if __name__ == .__main__.:",
 ]
 
+[tool.tox]
+env_list = [
+  "py3{10-14}",
+]
+skip_missing_interpreters = true
+
+[tool.tox.env_run_base]
+dependency_groups = [ "dev" ]
+commands = [[ "pytest" ]]
+
 [tool.cibuildwheel]
 test-requires = ["pytest", "pytz"]
 test-command = "pytest -m {project}/tests"
@@ -146,7 +156,7 @@ manylinux-x86_64-image = "manylinux_2_28"
 
 [tool.black]
 line-length = 88
-target-version = ['py39', 'py310', 'py311', 'py312', 'py313', 'py314']
+target-version = ['py310', 'py311', 'py312', 'py313', 'py314']
 exclude = '''
 /(
     \.eggs
