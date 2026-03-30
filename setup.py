@@ -4,11 +4,10 @@
 """The setup script."""
 
 from setuptools import setup
-from Cython.Build import cythonize
-import numpy
 import sys
 import os
-import importlib
+import importlib.metadata
+import importlib.resources
 
 
 # These routines are taken from yt
@@ -19,6 +18,7 @@ def in_conda_env():
 class EmbreePaths(object):
 
     def __init__(self, verbose=False):
+        import numpy
         self.version = importlib.metadata.version("embreex")
         self.lib_name = "embree" + self.version.split('.')[0]
         self.libs = [self.lib_name]
@@ -38,25 +38,26 @@ class EmbreePaths(object):
             print("LIBRARY_DIR", self.lib_dir)
             print("LIBRARIES", self.libs)
 
+    def append_embree_info(self, exts):
+        for ext in exts:
+            ext.include_dirs += self.inc_dir
+            ext.library_dirs += self.lib_dir
+            ext.language = "c++"
+            ext.libraries += self.libs
+        return exts
 
-embree_paths = EmbreePaths()
+if False:
+    from Cython.Build import cythonize
+    embree_paths = EmbreePaths()
 
-
-def append_embree_info(exts):
-    for ext in exts:
-        ext.include_dirs += embree_paths.inc_dir
-        ext.library_dirs += embree_paths.lib_dir
-        ext.language = "c++"
-        ext.libraries += embree_paths.libs
-
-    return exts
-
-ext_modules = append_embree_info(cythonize(
-    'hothouse/*.pyx',
-    include_path=embree_paths.inc_dir,
-    aliases={'EMBREE_INCLUDE_DIR': embree_paths.prefix},
-    compiler_directives={'language_level': 2},
-))
+    ext_modules = embree_paths.append_embree_info(cythonize(
+        'hothouse/*.pyx',
+        include_path=embree_paths.inc_dir,
+        aliases={'EMBREE_INCLUDE_DIR': embree_paths.prefix},
+        compiler_directives={'language_level': 2},
+    ))
+else:
+    ext_modules = []
 
 setup(
     ext_modules=ext_modules,

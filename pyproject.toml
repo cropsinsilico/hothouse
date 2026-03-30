@@ -5,9 +5,10 @@ universal = 1
 requires = [
   "setuptools >= 61.0",
   "setuptools_scm",
-  "Cython>=0.29.20",
-  "numpy>=1.13.0",
-  "embreex>=4.0.0rc0",
+  # Only required if building cython extension
+  # "Cython>=0.29.20",
+  # "numpy>=1.13.0",
+  # "embreex>=4.0.0rc0",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -137,8 +138,11 @@ exclude_lines = [
 ]
 
 [tool.cibuildwheel]
-test-requires = ["pytest"]
+test-requires = ["pytest", "pytz"]
 test-command = "pytest -m {project}/tests"
+# Based on embreex values
+skip = "*i686 *-win32 *musllinux*"
+manylinux-x86_64-image = "manylinux_2_28"
 
 [tool.black]
 line-length = 88

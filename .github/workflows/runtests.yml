@@ -19,9 +19,9 @@ jobs:
     name: Run tests on ${{ matrix.os }} for Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     # Required for conda
-    # defaults:
-    #   run:
-    #     shell: bash -el {0}
+    defaults:
+      run:
+        shell: bash -el {0}
 
     strategy:
       fail-fast: false
@@ -39,17 +39,19 @@ jobs:
     - name: (WINDOWS,CONDA) Set up MSVC Compiler
       uses: ilammy/msvc-dev-cmd@v1
       if: matrix.os == 'windows-latest'
-    - name: Install Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: ${{ matrix.python-version }}
-    # - name: Set up miniconda base environment
-    #   uses: conda-incubator/setup-miniconda@v3
+    # - name: Install Python
+    #   uses: actions/setup-python@v6
     #   with:
-    #     auto-update-conda: true
     #     python-version: ${{ matrix.python-version }}
-    #     channels: conda-forge
-    #     channel-priority: strict
+    - name: Set up miniconda base environment
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: ${{ matrix.python-version }}
+        channels: conda-forge
+        channel-priority: strict
+    - name: Install embree
+      run: conda install "embree>=4.0.0"
     - name: Install
       run: |
         pip install -v -e '.[dev]'
