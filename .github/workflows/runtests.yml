@@ -1,32 +1,107 @@
 name: Run tests
 
-on: [push]
+on:
+  release:
+    types: [created]
+  push:
+    branches-ignore:
+     - gh-pages
+    tags:
+     - '*'
+  schedule:
+    - cron: 0 10 * * 1  # 3AM PST
+
+env:
+  PYTHONVERSION_STD: "3.14"
 
 jobs:
-  build:
+  tests:
+    name: Run tests on ${{ matrix.os }} for Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    # Required for conda
+    # defaults:
+    #   run:
+    #     shell: bash -el {0}
 
-    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: [3.6, 3.7, 3.8]
+        python-version: [3.9, 3.10, 3.11, 3.12, 3.13, 3.14]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - python-version: 3.14
+            os: macos-latest
+          - python-version: 3.14
+            os: windows-latest
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Setup conda
-      uses: s-weigand/setup-conda@v1
+    - uses: actions/checkout@v5
+    - name: (WINDOWS,CONDA) Set up MSVC Compiler
+      uses: ilammy/msvc-dev-cmd@v1
+      if: matrix.os == 'windows-latest'
+    - name: Install Python
+      uses: actions/setup-python@v6
       with:
-          update-conda: true
-          python-version: ${{ matrix.python-version }}
-          conda-channels: anaconda, conda-forge
-    - name: Install dependencies
+        python-version: ${{ matrix.python-version }}
+    # - name: Set up miniconda base environment
+    #   uses: conda-incubator/setup-miniconda@v3
+    #   with:
+    #     auto-update-conda: true
+    #     python-version: ${{ matrix.python-version }}
+    #     channels: conda-forge
+    #     channel-priority: strict
+    - name: Install
       run: |
-        conda install -n=base pyembree numpy cython
-        source activate base
-        pip install -U pip
-        pip install -r requirements.txt
-        pip install -r requirements_dev.txt
-        pip install -e .
-    - name: Pytest
+        pip install -e -v '.[dev]'
+    - name: Check syntax
       run: |
-        source activate base
-        pytest
+        flake8 hothouse
+    - name: Run tests
+      run: |
+        pytest -sv tests
+
+  docs:
+    name: Build the Docs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+    - uses: actions/checkout@v5
+    # - name: Get tags required by setuptools_scm to generate version
+    #   run: |
+    #     git fetch --prune --unshallow
+    #     git fetch --depth=1 origin +refs/tags/*:refs/tags/*
+    - name: Install Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ env.PYTHONVERSION_STD }}
+    - name: Install
+      run: |
+        pip install -e -v '.[dev]'
+    - name: Build the docs
+      run: |
+        cd docs
+        make autodoc
+        cd ../
+    - name: Publish docs to Github pages
+      if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags')) || github.event_name == 'release'
+      uses: JamesIves/github-pages-deploy-action@3.7.1
+      with:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BRANCH: gh-pages
+        FOLDER: docs/build/html/
+
+  all_tests_passed:
+    runs-on: ubuntu-latest
+    name: All tests passed
+    needs: [tests, docs]
+    if: always()
+    steps:
+      - name: All tests ok
+        if: ${{ !(contains(needs.*.result, 'failure')) }}
+        run: exit 0
+      - name: Some tests failed
+        if: ${{ contains(needs.*.result, 'failure') }}
+        run: exit 1
+
