@@ -75,10 +75,11 @@ def model_pyramid(datadir):
 def scene_soy(model_soy):
     r"""Scene containing test soy data."""
     from hothouse.scene import Scene
-    ground = np.array([0.0, 0.0, 200.0], dtype="f4")
-    up = np.array([0.0, 0.0, 1.0], dtype="f4")
-    north = np.array([0.0, 1.0, 0.0], dtype="f4")
-    s = Scene(ground=ground, up=up, north=north)
+    s = Scene(
+        ground=np.array([0.0, 0.0, 200.0], dtype="f4"),
+        up=np.array([0.0, 0.0, 1.0], dtype="f4"),
+        north=np.array([0.0, 1.0, 0.0], dtype="f4"),
+    )
     s.add_component(model_soy)
     return s
 
@@ -96,9 +97,12 @@ def scene_sphere(model_sphere):
 def scene_pyramid(model_pyramid):
     r"""Scene containing test pyramid data."""
     from hothouse.scene import Scene
-    s = Scene(ground=np.array([0.5, 0.5, 0.0], "f4"),
-              up=np.array([0.0, 0.0, 1.0], dtype="f4"),
-              north=np.array([0.0, 1.0, 0.0], dtype="f4"))
+    s = Scene(
+        ground=np.array([0.5, 0.5, 0.0], "f4"),
+        up=np.array([0.0, 0.0, 1.0], dtype="f4"),
+        north=np.array(
+            [1.0 / np.sqrt(2.0), 1.0 / np.sqrt(2.0), 0.0], dtype="f4"),
+    )
     s.add_component(model_pyramid)
     return s
 
@@ -107,7 +111,7 @@ def scene_pyramid(model_pyramid):
 def assert_dicts_almost_equal():
     r"""Assert that dictionaries of numpy arrays are almost equal."""
 
-    def _assert_dicts_almost_equal(a, b, ignore_keys=None):
+    def _assert_dicts_almost_equal(a, b, ignore_keys=None, **kwargs):
         a_keys = list(sorted(a.keys()))
         b_keys = list(sorted(b.keys()))
         if ignore_keys:
@@ -116,7 +120,7 @@ def assert_dicts_almost_equal():
         assert a_keys == b_keys
         for k in b_keys:
             try:
-                assert_almost_equal(a[k], b[k])
+                assert_almost_equal(a[k], b[k], **kwargs)
             except AssertionError:
                 print(k)
                 if a[k].shape == b[k].shape:

@@ -183,7 +183,6 @@ def rotate_u(x, theta, u):
         if isinstance(theta, np.ndarray):
             assert len(theta) == x.shape[0]
         if hasattr(np, 'matvec'):
-            R = np.swapaxes(R, -1, -2)
             return np.matvec(R, x)
         return np.vstack([
             np.matmul(R[i, ...], x[i, ...])

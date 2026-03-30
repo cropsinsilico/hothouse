@@ -91,7 +91,7 @@ class MultibounceCallback(traitlets.HasTraits):
         # Rotate inverse of original direction 180 deg around surface
         # normal to get new direction
         return sun_calc.rotate_u(-self.directions[self.idx], np.pi,
-                                 self.hits['Ng'][self.idx])
+                                 self.hits['Ng'][self.idx]).astype("f4")
 
     @cached_property
     def transmitted_directions(self):
@@ -108,7 +108,9 @@ class MultibounceCallback(traitlets.HasTraits):
                     zip(self.hits['geomID'][self.idx],
                         self.hits['primID'][self.idx])):
                 R[i] = self.reflectance[geomID][primID]
-        return R * self.power[self.idx]
+        out = self.power[self.idx].copy()
+        out[:] *= R
+        return out
 
     @cached_property
     def transmitted_power(self):
@@ -119,7 +121,9 @@ class MultibounceCallback(traitlets.HasTraits):
                     zip(self.hits['geomID'][self.idx],
                         self.hits['primID'][self.idx])):
                 T[i] = self.transmittance[geomID][primID]
-        return T * self.power[self.idx]
+        out = self.power[self.idx].copy()
+        out[:] *= T
+        return out
 
     @cached_property
     def next_power(self):
@@ -154,10 +158,12 @@ class MultibounceCallback(traitlets.HasTraits):
     def next_origins(self):
         r"""np.ndarray: Origins for the next round of rays."""
         # Prevent intersection with origin by adding small offset
-        return np.vstack([
+        out = np.vstack([
             self.intersections,
             self.intersections,
-        ]) + 1e-4 * self.next_directions
+        ])
+        out[:] += 1e-4 * self.next_directions
+        return out
 
     @cached_property
     def next_directions(self):
@@ -835,9 +841,8 @@ class ProjectionRayBlaster(RayBlaster):
     @traitlets.default("directions")
     def _default_directions(self):
         self._directions = self.origins - self.camera_origin
-        norms = np.linalg.norm(self._directions, axis=1)
-        for i in range(3):
-            self._directions[:, i] /= norms
+        self._directions = sun_calc.norm_along_axis(
+            self._directions, 1).astype("f4")
         return self._directions.view()
 
     @traitlets.default("origins")
@@ -899,14 +904,14 @@ class SphericalRayBlaster(ProjectionRayBlaster):
     def _default_directions(self):
         self._directions = np.zeros((self.nx * self.ny, 3), dtype="f4")
         self._directions[:] = self.forward[None, :]
-        fov_width = np.radians(self.fov_width)
-        fov_height = np.radians(self.fov_height)
+        fov_width = self.fov_width
+        fov_height = self.fov_height
         offset_x, offset_y = np.mgrid[
             (-fov_width / 2):(fov_width / 2):(self.nx * 1j),
             (fov_height / self.ny):fov_height:(self.ny * 1j),
         ]
-        offset_x = offset_x.flatten()
-        offset_y = offset_y.flatten()
+        offset_x = np.radians(offset_x.flatten())
+        offset_y = np.radians(offset_y.flatten())
         self._directions = sun_calc.rotate_u(
             self._directions, -offset_y, self.east)
         self._directions = sun_calc.rotate_u(
