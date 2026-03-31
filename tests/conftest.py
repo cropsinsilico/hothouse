@@ -3,7 +3,7 @@ import pytest
 import pytz
 import datetime
 import numpy as np
-from numpy.testing import assert_almost_equal
+from numpy.testing import assert_almost_equal, assert_allclose
 
 
 @pytest.fixture(scope="session")
@@ -129,6 +129,30 @@ def assert_dicts_almost_equal():
                 raise
 
     return _assert_dicts_almost_equal
+
+
+@pytest.fixture(scope="session")
+def assert_dicts_allclose():
+    r"""Assert that dictionaries of numpy arrays are almost equal."""
+
+    def _assert_dicts_allclose(a, b, ignore_keys=None, **kwargs):
+        a_keys = list(sorted(a.keys()))
+        b_keys = list(sorted(b.keys()))
+        if ignore_keys:
+            a_keys = [k for k in a_keys if k not in ignore_keys]
+            b_keys = [k for k in b_keys if k not in ignore_keys]
+        assert a_keys == b_keys
+        for k in b_keys:
+            try:
+                assert_allclose(a[k], b[k], **kwargs)
+            except AssertionError:
+                print(k)
+                if a[k].shape == b[k].shape:
+                    print(a[k] == b[k])
+                print(a[k])
+                raise
+
+    return _assert_dicts_allclose
 
 
 @pytest.fixture(scope="session")

@@ -1,7 +1,7 @@
 import pytest
 import copy
 import numpy as np
-from numpy.testing import assert_almost_equal
+from numpy.testing import assert_allclose
 from hothouse import blaster
 
 
@@ -14,11 +14,10 @@ def test_sun_blaster(location_champaign, altitude_champaign,
     rb = scene_soy.get_sun_blaster(*location_champaign, date,
                                    altitude=altitude_champaign,
                                    nx=nx, ny=ny)
-    assert_almost_equal(rb.solar_altitude, 7.807668468792781)
-    assert_almost_equal(rb.solar_distance, 694.869384765625)
-    assert_almost_equal(rb.center,
-                        np.array([574.79425, 254.042, 532.0392], "f4"),
-                        decimal=5)
+    assert_allclose(rb.solar_altitude, 7.807668468792781)
+    assert_allclose(rb.solar_distance, 694.869384765625)
+    assert_allclose(rb.center,
+                    np.array([574.79425, 254.042, 532.0392], "f4"))
     rb.compute_distance(scene_soy)
     scene_soy.compute_solar_ppfd(*location_champaign, date,
                                  altitude=altitude_champaign)
@@ -178,24 +177,24 @@ class TestRayBlaster:
         out['ray_dir'][:, 4, 2] = 8.2206404e-01
 
         out['ray_dir'][0, 0, 0] = -5.6939501e-01
-        out['ray_dir'][0, 0, 1] = -1.1689008e-16
+        out['ray_dir'][0, 0, 1] = 1.1689008e-16
         out['ray_dir'][0, 4, 0] = 5.6939501e-01
-        out['ray_dir'][0, 4, 1] = 1.1689008e-16
+        out['ray_dir'][0, 4, 1] = -1.1689008e-16
 
-        out['ray_dir'][1, 0, 0] = -1.1689008e-16
+        out['ray_dir'][1, 0, 0] = 1.1689008e-16
         out['ray_dir'][1, 0, 1] = 5.6939501e-01
-        out['ray_dir'][1, 4, 0] = 1.1689008e-16
+        out['ray_dir'][1, 4, 0] = -1.1689008e-16
         out['ray_dir'][1, 4, 1] = -5.6939501e-01
 
-        out['ray_dir'][2, 0, 0] = 1.1689008e-16
+        out['ray_dir'][2, 0, 0] = -1.1689008e-16
         out['ray_dir'][2, 0, 1] = -5.6939501e-01
-        out['ray_dir'][2, 4, 0] = -1.1689008e-16
+        out['ray_dir'][2, 4, 0] = 1.1689008e-16
         out['ray_dir'][2, 4, 1] = 5.6939501e-01
 
         out['ray_dir'][3, 0, 0] = 5.6939501e-01
-        out['ray_dir'][3, 0, 1] = 1.1689008e-16
+        out['ray_dir'][3, 0, 1] = -1.1689008e-16
         out['ray_dir'][3, 4, 0] = -5.6939501e-01
-        out['ray_dir'][3, 4, 1] = -1.1689008e-16
+        out['ray_dir'][3, 4, 1] = 1.1689008e-16
 
         return out
 
@@ -221,29 +220,30 @@ class TestRayBlaster:
                               expected_result_sorted):
         r"""Test calculation of travel distance to scene."""
         actual = instance.compute_distance(scene_pyramid)
-        assert_almost_equal(actual, expected_result_sorted['tfar'],
-                            decimal=6)
+        assert_allclose(actual, expected_result_sorted['tfar'],
+                        atol=1e-7, rtol=1e-6)
 
     def test_compute_count(self, instance, scene_pyramid,
                            expected_result_sorted,
-                           assert_dicts_almost_equal):
+                           assert_dicts_allclose):
         r"""Test calculation of intersections with scene."""
         actual = instance.compute_count(scene_pyramid)
-        assert_dicts_almost_equal(actual, expected_result_sorted,
-                                  decimal=6)
+        assert_dicts_allclose(actual, expected_result_sorted,
+                              atol=1e-7, rtol=1e-6)
 
     def test_compute_count_multibounce(self, instance_multibounce,
                                        scene_pyramid,
                                        expected_result_sorted,
                                        expected_bounces_sorted,
-                                       assert_dicts_almost_equal):
+                                       assert_dicts_allclose):
         r"""Test calculation of intersections with scene."""
         actual = instance_multibounce.compute_count(scene_pyramid)
-        assert_dicts_almost_equal(actual, expected_result_sorted,
-                                  ignore_keys=['bounces'], decimal=6)
+        assert_dicts_allclose(actual, expected_result_sorted,
+                              ignore_keys=['bounces'],
+                              atol=1e-7, rtol=1e-6)
         assert 'bounces' in actual
-        assert_dicts_almost_equal(actual['bounces'],
-                                  expected_bounces_sorted, decimal=6)
+        assert_dicts_allclose(actual['bounces'], expected_bounces_sorted,
+                              atol=1e-7, rtol=1e-6)
 
 
 class TestOrthographicRayBlaster(TestRayBlaster):
@@ -302,11 +302,11 @@ class TestProjectionRayBlaster(TestRayBlaster):
         out['ray_dir'][:, 0, 2] = -8.5598105e-01
         out['ray_dir'][:, 4, 2] = 7.8494531e-01
         a = 5.1700723e-01
-        b = 1.1894101e-16
+        b = 0.0  # 1.1894101e-16
         c = 6.2378287e-02
-        d = 7.6391370e-18
+        d = 0.0  # 7.6391370e-18
         e = 6.1956513e-01
-        f = 1.2202302e-16
+        f = 0.0  # 1.2202302e-16
 
         out['ray_dir'][0, 0, :2] = [-a, -b]
         out['ray_dir'][0, 2, :2] = [-c, d]
@@ -424,10 +424,10 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
             1.394231, 1.553455, 1.394803, 1.538504
         ], "f4")
         out['u'] = np.array([
-            0.4938758, 0.4621518, 0.2606957, 0.2910709
+            0.4938756, 0.46215066, 0.26069573, 0.29107162
         ], "f4")
         out['v'] = np.array([
-            0.2388414, 0.2758704, 0.4935333, 0.4711011
+            0.23884138, 0.27587134, 0.493533, 0.4711003
         ], "f4")
         return out
 
@@ -473,9 +473,9 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
         out['u'][2, (1, 2, 4)] = [0.33207, 0.362786, 0.636917]
         out['u'][3, (1, 2, 4)] = [0.08237622, 0.6788575, 0.32086235]
 
-        out['v'][0, (1, 2, 4)] = [0.068164, 0.338039, 0.667951]
-        out['v'][1, (1, 2, 4)] = [0.58977, 0.643403, 0.366037]
-        out['v'][2, (1, 2, 4)] = [0.089443, 0.402441, 0.089176]
+        out['v'][0, (1, 2, 4)] = [0.06816402, 0.3380392, 0.66795087]
+        out['v'][1, (1, 2, 4)] = [0.58977044, 0.64340335, 0.36603665]
+        out['v'][2, (1, 2, 4)] = [0.08944302, 0.40244052, 0.08917636]
         out['v'][3, (1, 2, 4)] = [0.6110496, 0.09983292, 0.42093852]
 
         return out

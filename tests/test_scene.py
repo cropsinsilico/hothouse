@@ -1,7 +1,7 @@
 import pytest
 import copy
 import numpy as np
-from numpy.testing import assert_almost_equal
+from numpy.testing import assert_allclose
 from hothouse import scene
 
 
@@ -54,7 +54,7 @@ class TestScene:
         assert len(instance.reflectance) == 1
         assert instance.transmittance[0].shape == (nface, )
         assert instance.reflectance[0].shape == (nface, )
-        assert_almost_equal(
+        assert_allclose(
             instance.limits,
             np.array([
                 [-19.73708, -19.73708, -19.73708],
@@ -65,8 +65,7 @@ class TestScene:
                 [-19.73708, 19.73708, 19.73708],
                 [19.73708, 19.73708, -19.73708],
                 [19.73708, 19.73708, 19.73708]
-            ], "f4"),
-            decimal=6
+            ], "f4")
         )
 
     def test_compute_hit_count(self, instance, blaster, nface):
@@ -83,8 +82,7 @@ class TestScene:
                                              datetime_champaign("noon"))
         assert len(result) == 1
         assert result[0].shape == (nface, )
-        assert_almost_equal(result[0].sum(),
-                            expected_results['solar_ppfd'], decimal=6)
+        assert_allclose(result[0].sum(), expected_results['solar_ppfd'])
 
     def test_compute_flux_density(self, instance, nface, blaster,
                                   expected_results):
@@ -92,8 +90,7 @@ class TestScene:
         result = instance.compute_flux_density(blaster)
         assert len(result) == 1
         assert result[0].shape == (nface, )
-        assert_almost_equal(result[0].sum(),
-                            expected_results['flux_density'], decimal=6)
+        assert_allclose(result[0].sum(), expected_results['flux_density'])
 
 
 class TestPeriodicScene(TestScene):
