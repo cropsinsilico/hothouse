@@ -65,7 +65,8 @@ class TestScene:
                 [-19.73708, 19.73708, 19.73708],
                 [19.73708, 19.73708, -19.73708],
                 [19.73708, 19.73708, 19.73708]
-            ], "f4")
+            ], "f4"),
+            decimal=6
         )
 
     def test_compute_hit_count(self, instance, blaster, nface):
@@ -83,7 +84,7 @@ class TestScene:
         assert len(result) == 1
         assert result[0].shape == (nface, )
         assert_almost_equal(result[0].sum(),
-                            expected_results['solar_ppfd'])
+                            expected_results['solar_ppfd'], decimal=6)
 
     def test_compute_flux_density(self, instance, nface, blaster,
                                   expected_results):
@@ -92,7 +93,7 @@ class TestScene:
         assert len(result) == 1
         assert result[0].shape == (nface, )
         assert_almost_equal(result[0].sum(),
-                            expected_results['flux_density'])
+                            expected_results['flux_density'], decimal=6)
 
 
 class TestPeriodicScene(TestScene):

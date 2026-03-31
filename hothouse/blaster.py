@@ -632,7 +632,8 @@ class SunRayBlaster(OrthographicRayBlaster):
     @traitlets.default("_solpos_info")
     def _default_solpos_info(self):
         return pvlib.solarposition.get_solarposition(
-            self.date, self.latitude, self.longitude
+            self.date, self.latitude, self.longitude,
+            pressure=self.pressure, temperature=self.temperature,
         )
 
     @traitlets.default("solar_altitude")
