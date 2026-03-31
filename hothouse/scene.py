@@ -376,7 +376,7 @@ class Scene(traitlets.HasTraits):
             if orthographic:
                 component_counts = np.bincount(
                     primID[idx_hits], minlength=component.triangles.shape[0])
-                component_fd[ci] += np.array(
+                component_fd[ci][:] += np.array(
                     component_counts * ray_intensity
                     * self._calc_incident_power(
                         ray_dir, norms, areas,

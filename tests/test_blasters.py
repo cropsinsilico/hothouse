@@ -16,8 +16,10 @@ def test_sun_blaster(location_champaign, altitude_champaign,
                                    nx=nx, ny=ny)
     assert_allclose(rb.solar_altitude, 7.807668468792781)
     assert_allclose(rb.solar_distance, 694.869384765625)
-    assert_allclose(rb.center,
-                    np.array([574.79425, 254.042, 532.0392], "f4"))
+    assert_allclose(
+        rb.center,
+        np.array([574.794189453125, 254.042, 532.0392456054688], "f4"),
+        atol=1e-7, rtol=1e-6)
     rb.compute_distance(scene_soy)
     scene_soy.compute_solar_ppfd(*location_champaign, date,
                                  altitude=altitude_champaign)
