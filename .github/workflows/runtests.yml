@@ -36,9 +36,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
-    - name: (WINDOWS,CONDA) Set up MSVC Compiler
-      uses: ilammy/msvc-dev-cmd@v1
-      if: matrix.os == 'windows-latest'
+    # - name: (WINDOWS,CONDA) Set up MSVC Compiler
+    #   uses: ilammy/msvc-dev-cmd@v1
+    #   if: matrix.os == 'windows-latest'
     - name: Install Python
       uses: actions/setup-python@v6
       with:
