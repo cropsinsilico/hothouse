@@ -80,20 +80,22 @@ class Scene(traitlets.HasTraits):
         self.meshes.append(
             TriangleMesh(self.embree_scene, component.triangles))
 
-    def compute_hit_count(self, blaster):
+    def compute_hit_count(self, blaster, **kwargs):
         r"""Run the raytracer to determine how many rays will hit each
         component face in the scene.
 
         Args:
             blaster (hothouse.blaster.RayBlaster): Blaster containing
                 rays to trace.
+            **kwargs: Additional keyword arguments are passed to
+                the compute_count method for the blaster.
 
         Returns:
             dict: Mapping between component index and arrays of hit
                 counts for each face in the component geometry.
 
         """
-        output = blaster.compute_count(self)
+        output = blaster.compute_count(self, **kwargs)
         component_counts = {}
         for ci, component in enumerate(self.components):
             hits = output["primID"][output["geomID"] == ci]
