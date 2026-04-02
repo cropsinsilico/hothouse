@@ -11,7 +11,7 @@ from .blaster import (
     QueryType, RayBlaster, OrthographicRayBlaster, SunRayBlaster,
 )
 from .traits_support import check_shape, check_dtype
-from .sun_calc import solar_ppfd
+from . import sun_calc
 
 from embreex.mesh_construction import TriangleMesh
 
@@ -261,14 +261,13 @@ class Scene(traitlets.HasTraits):
         plt.colorbar()
 
         def update(frame):
-            ppfd_tot = solar_ppfd(latitude, longitude, frame,
-                                  altitude=altitude)
+            ppfd_tot = sun_calc.solar_ppfd(latitude, longitude, frame,
+                                           altitude=altitude)
             sun = self.get_sun_blaster(latitude, longitude, frame,
                                        nx=nx, ny=ny,
                                        direct_ppfd=ppfd_tot['direct'],
-                                       diffuse_ppfd=ppfd_tot['diffuse'],
-                                       multibounce=True)
-            o = camera.compute_flux_density(self, sun)
+                                       diffuse_ppfd=ppfd_tot['diffuse'])
+            o = camera.compute_flux_density(self, sun, multibounce=True)
             o[o <= 0] = np.nan
             img.set_data(o.reshape((camera.ny, camera.nx), order='F'))
             return img,
@@ -283,7 +282,8 @@ class Scene(traitlets.HasTraits):
             ani.save(fname, writer=writer)
         return ani
 
-    def compute_flux_density(self, light_sources, any_direction=True):
+    def compute_flux_density(self, light_sources, any_direction=True,
+                             **kwargs):
         r"""Compute the flux density on each scene element from a
         set of light sources. Values will be calculated from the
         'intensity' attribute of the light source blasters such that
@@ -299,6 +299,8 @@ class Scene(traitlets.HasTraits):
                 front or back of a component surface. If False, light
                 is only deposited if the blaster rays hit the front.
                 Defaults to True.
+            **kwargs: Additional keyword arguments are passed to
+                the compute_count method for each light source.
 
         Returns:
             dict: Mapping from scene component to an array of flux
@@ -311,8 +313,8 @@ class Scene(traitlets.HasTraits):
         for ci, component in enumerate(self.components):
             component_fd[ci] = np.zeros(component.triangles.shape[0], "f4")
         for blaster in light_sources:
-            counts = blaster.compute_count(self)
-            if blaster.multibounce:
+            counts = blaster.compute_count(self, **kwargs)
+            if "bounces" in counts:
                 orthographic = isinstance(blaster, OrthographicRayBlaster)
                 for i in range(max(counts["bounces"]["nbounce"])):
                     orthographic = (orthographic and (i == 0))
@@ -349,20 +351,15 @@ class Scene(traitlets.HasTraits):
         return component_fd
 
     def _calc_incident_power(self, ray_dir, norm, area, any_direction=True):
-        aoi = np.arccos(
-            np.dot(norm, -ray_dir) / (2.0 * area * np.linalg.norm(ray_dir)))
-        if isinstance(aoi, np.ndarray):
-            if any_direction:
-                aoi[aoi > np.pi/2] -= np.pi
-            else:
-                aoi[aoi > np.pi/2] = np.pi / 2  # No contribution
+        cosaoi = (
+            np.dot(norm, -ray_dir)
+            / (2.0 * area * np.linalg.norm(ray_dir))
+        )
+        out = cosaoi / area
+        if any_direction:
+            out = np.abs(out)
         else:
-            if aoi > np.pi/2:
-                if any_direction:
-                    aoi -= np.pi
-                else:
-                    aoi = np.pi / 2
-        out = np.cos(aoi) / area
+            out[out < 0] = 0
         return out
 
     def _accumulate_hits(self, component_fd, primID, geomID,
@@ -380,7 +377,7 @@ class Scene(traitlets.HasTraits):
                     component_counts * ray_intensity
                     * self._calc_incident_power(
                         ray_dir, norms, areas,
-                        any_direction=any_direction))
+                        any_direction=any_direction), "f4")
             else:
                 if not isinstance(ray_intensity, np.ndarray):
                     ray_intensity = ray_intensity * np.ones(primID.shape)
@@ -397,7 +394,7 @@ class Scene(traitlets.HasTraits):
             # Diffuse
             # TODO: This assumes diffuse light comes from everywhere
             if diffuse_intensity > 0.0:
-                tilt = np.arccos(
+                tilt = sun_calc.stable_arccos(
                     np.dot(norms, self.up)
                     / (2.0 * areas * np.linalg.norm(self.up)))
                 component_diffuse = pvlib.irradiance.isotropic(

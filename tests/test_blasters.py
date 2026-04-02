@@ -1,12 +1,12 @@
 import pytest
 import copy
 import numpy as np
-from numpy.testing import assert_allclose
-from hothouse import blaster
+from hothouse import blaster, sun_calc
 
 
 def test_sun_blaster(location_champaign, altitude_champaign,
-                     datetime_champaign, scene_soy):
+                     datetime_champaign, scene_soy,
+                     assert_allclose):
     r"""Test creation & use of solar blaster."""
     nx = 512
     ny = 512
@@ -18,8 +18,7 @@ def test_sun_blaster(location_champaign, altitude_champaign,
     assert_allclose(rb.solar_distance, 694.869384765625)
     assert_allclose(
         rb.center,
-        np.array([574.794189453125, 254.042, 532.0392456054688], "f4"),
-        atol=1e-7, rtol=1e-6)
+        np.array([574.7942504882812, 254.042, 532.0391845703125], "f4"))
     rb.compute_distance(scene_soy)
     scene_soy.compute_solar_ppfd(*location_champaign, date,
                                  altitude=altitude_champaign)
@@ -72,18 +71,20 @@ class TestRayBlaster:
 
     @pytest.fixture(scope="class")
     def fov_width(self, intersection_width, camera_distance):
-        return np.degrees(2.0 * np.arctan((intersection_width / 2.0)
-                                          / camera_distance))
+        return np.degrees(
+            2.0 * sun_calc.stable_arctan((intersection_width / 2.0)
+                                         / camera_distance))
 
     @pytest.fixture(scope="class")
     def fov_radius(self, intersection_radius, camera_distance):
-        return np.degrees(np.arctan(intersection_radius
-                                    / camera_distance))
+        return np.degrees(
+            sun_calc.stable_arctan(intersection_radius
+                                   / camera_distance))
 
     @pytest.fixture(scope="class")
     def angle_side(self, scene_pyramid):
         r"""Elevation angle of pyramid side from horizontal xy plane."""
-        return np.degrees(np.arctan(1.6 / 0.5))
+        return np.degrees(sun_calc.stable_arctan(1.6 / 0.5))
 
     @pytest.fixture(scope="class")
     def reorder_rays(self):
@@ -102,11 +103,6 @@ class TestRayBlaster:
         #     print("RE-ORDER")
         #     print(out.directions[np.argsort(reorder_rays)])
         return out
-
-    @pytest.fixture(scope="class")
-    def instance_multibounce(self, instance_kws):
-        return self.cls(multibounce=True, power_threshold=0.1,
-                        **instance_kws)
 
     @pytest.fixture(scope="class")
     def expected_result(self):
@@ -136,8 +132,18 @@ class TestRayBlaster:
         return expected_bounces_base
 
     @pytest.fixture(scope="class")
+    def expected_bounce_factors(self, instance):
+        a = 5.6939501e-01
+        b = 8.2206404e-01
+        c = 0.0
+        d = b
+        e = a
+        return (a, b, c, d, e)
+
+    @pytest.fixture(scope="class")
     def expected_bounces_base(self, get_bounces_empty, expected_result,
-                              instance, reorder_rays):
+                              instance, reorder_rays,
+                              expected_bounce_factors):
         out = get_bounces_empty(6)
         if reorder_rays is None:
             reorder_idx = np.arange(out['nbounce'].shape[0], dtype="i4")
@@ -157,7 +163,7 @@ class TestRayBlaster:
         out['tfar'][:, (1, 2)] = 7.9989994e-01
         out['tfar'][:, 4] = 6.0501444e-01
         out['u'] = np.array([
-            [0.0, 0.25, 0.5, 0.0, 0.09454912, 0.0],
+            [0.0, 0.25, 0.5, 0.0, 0.09454914182424545, 0.0],
             [0.0, 0.5, 0.5, 0.0, 0.09454912, 0.0],
             [0.0, 0.25, 0.25, 0.0, 0.81090176, 0.0],
             [0.0, 0.25, 0.25, 0.0, 0.81090176, 0.0],
@@ -165,38 +171,37 @@ class TestRayBlaster:
         out['v'] = np.array([
             [0.0, 0.5, 0.25, 0.0, 0.81090176, 0.0],
             [0.0, 0.25, 0.25, 0.0, 0.81090176, 0.0],
-            [0.0, 0.25, 0.5, 0.0, 0.09454912, 0.0],
-            [0.0, 0.25, 0.5, 0.0, 0.09454914, 0.0],
+            [0.0, 0.25, 0.5, 0.0, 0.09454914182424545, 0.0],
+            [0.0, 0.25, 0.5, 0.0, 0.09454911947250366, 0.0],
         ], "f4")
         out['power'][:] = np.array([
             0.5, 0.25, 0.125, 0.0625, 0.0625, 0.03125,
         ], dtype="f4")
+
+        a, b, c, d, e = expected_bounce_factors[:]
         out['ray_dir'][:, 1, :] = instance.directions[reorder_idx, ...]
         out['ray_dir'][:, 3, :] = instance.directions[reorder_idx, ...]
         out['ray_dir'][:, 2, 2] = -instance.directions[reorder_idx, 2]
         out['ray_dir'][:, 5, 2] = -instance.directions[reorder_idx, 2]
-        out['ray_dir'][:, 0, 2] = -8.2206404e-01
-        out['ray_dir'][:, 4, 2] = 8.2206404e-01
+        out['ray_dir'][:, 0, 2] = -b
+        out['ray_dir'][:, 4, 2] = d
 
-        out['ray_dir'][0, 0, 0] = -5.6939501e-01
-        out['ray_dir'][0, 0, 1] = 1.1689008e-16
-        out['ray_dir'][0, 4, 0] = 5.6939501e-01
-        out['ray_dir'][0, 4, 1] = -1.1689008e-16
+        out['ray_dir'][0, (2, 5), 0] = -c
+        out['ray_dir'][1, (2, 5), 1] = c
+        out['ray_dir'][2, (2, 5), 1] = -c
+        out['ray_dir'][3, (2, 5), 0] = c
 
-        out['ray_dir'][1, 0, 0] = 1.1689008e-16
-        out['ray_dir'][1, 0, 1] = 5.6939501e-01
-        out['ray_dir'][1, 4, 0] = -1.1689008e-16
-        out['ray_dir'][1, 4, 1] = -5.6939501e-01
+        out['ray_dir'][0, 0, 0] = -a
+        out['ray_dir'][0, 4, 0] = e
 
-        out['ray_dir'][2, 0, 0] = -1.1689008e-16
-        out['ray_dir'][2, 0, 1] = -5.6939501e-01
-        out['ray_dir'][2, 4, 0] = 1.1689008e-16
-        out['ray_dir'][2, 4, 1] = 5.6939501e-01
+        out['ray_dir'][1, 0, 1] = a
+        out['ray_dir'][1, 4, 1] = -e
 
-        out['ray_dir'][3, 0, 0] = 5.6939501e-01
-        out['ray_dir'][3, 0, 1] = -1.1689008e-16
-        out['ray_dir'][3, 4, 0] = -5.6939501e-01
-        out['ray_dir'][3, 4, 1] = 1.1689008e-16
+        out['ray_dir'][2, 0, 1] = -a
+        out['ray_dir'][2, 4, 1] = e
+
+        out['ray_dir'][3, 0, 0] = a
+        out['ray_dir'][3, 4, 0] = -e
 
         return out
 
@@ -219,33 +224,31 @@ class TestRayBlaster:
         return out
 
     def test_compute_distance(self, instance, scene_pyramid,
-                              expected_result_sorted):
+                              expected_result_sorted, assert_allclose):
         r"""Test calculation of travel distance to scene."""
         actual = instance.compute_distance(scene_pyramid)
-        assert_allclose(actual, expected_result_sorted['tfar'],
-                        atol=1e-7, rtol=1e-6)
+        assert_allclose(actual, expected_result_sorted['tfar'])
 
     def test_compute_count(self, instance, scene_pyramid,
                            expected_result_sorted,
                            assert_dicts_allclose):
         r"""Test calculation of intersections with scene."""
         actual = instance.compute_count(scene_pyramid)
-        assert_dicts_allclose(actual, expected_result_sorted,
-                              atol=1e-7, rtol=1e-6)
+        assert_dicts_allclose(actual, expected_result_sorted)
 
-    def test_compute_count_multibounce(self, instance_multibounce,
+    def test_compute_count_multibounce(self, instance,
                                        scene_pyramid,
                                        expected_result_sorted,
                                        expected_bounces_sorted,
                                        assert_dicts_allclose):
         r"""Test calculation of intersections with scene."""
-        actual = instance_multibounce.compute_count(scene_pyramid)
+        actual = instance.compute_count(
+            scene_pyramid, multibounce=True, power_threshold=0.1)
         assert_dicts_allclose(actual, expected_result_sorted,
-                              ignore_keys=['bounces'],
-                              atol=1e-7, rtol=1e-6)
+                              ignore_keys=['bounces'])
         assert 'bounces' in actual
         assert_dicts_allclose(actual['bounces'], expected_bounces_sorted,
-                              atol=1e-7, rtol=1e-6)
+                              rtol=1e-6)
 
 
 class TestOrthographicRayBlaster(TestRayBlaster):
@@ -299,52 +302,29 @@ class TestProjectionRayBlaster(TestRayBlaster):
         return out
 
     @pytest.fixture(scope="class")
+    def expected_bounce_factors(self, instance):
+        a = 5.1700723e-01
+        b = 8.5598105e-01
+        c = 6.2378287e-02
+        d = 7.8494531e-01
+        e = 6.1956513e-01
+        return (a, b, c, d, e)
+
+    @pytest.fixture(scope="class")
     def expected_bounces(self, expected_bounces_base):
         out = copy.deepcopy(expected_bounces_base)
-        out['ray_dir'][:, 0, 2] = -8.5598105e-01
-        out['ray_dir'][:, 4, 2] = 7.8494531e-01
-        a = 5.1700723e-01
-        b = 0.0  # 1.1894101e-16
-        c = 6.2378287e-02
-        d = 0.0  # 7.6391370e-18
-        e = 6.1956513e-01
-        f = 0.0  # 1.2202302e-16
 
-        out['ray_dir'][0, 0, :2] = [-a, -b]
-        out['ray_dir'][0, 2, :2] = [-c, d]
-        out['ray_dir'][0, 4, :2] = [e,  f]
-        out['ray_dir'][0, 5, :2] = [-c, d]
+        out['tfar'][:, 1] = 1.0018513
+        out['tfar'][:, 2] = 0.6678675
+        out['tfar'][:, 4] = 0.6743825
 
-        out['ray_dir'][1, 0, :2] = [-b, a]
-        out['ray_dir'][1, 2, :2] = [d, c]
-        out['ray_dir'][1, 4, :2] = [f, -e]
-        out['ray_dir'][1, 5, :2] = [d, c]
-
-        out['ray_dir'][2, 0, :2] = [b, -a]
-        out['ray_dir'][2, 2, :2] = [-d, -c]
-        out['ray_dir'][2, 4, :2] = [-f, e]
-        out['ray_dir'][2, 5, :2] = [-d, -c]
-
-        out['ray_dir'][3, 0, :2] = [a, b]
-        out['ray_dir'][3, 2, :2] = [c, -d]
-        out['ray_dir'][3, 4, :2] = [-e, -f]
-        out['ray_dir'][3, 5, :2] = [c, -d]
-
-        out['tfar'][:, 1] = 1.0018513e+00
-        out['tfar'][:, 2] = 6.6786748e-01
-        out['tfar'][(0, 2), 4] = 6.7438251e-01
-        out['tfar'][(1, 3), 4] = 6.7438257e-01
-
-        out['u'][(0, 2, 3), 1] = 0.25
-        out['u'][1, 1] = 0.5
-        out['u'][:2, 2] = 0.41666666
-        out['u'][2:, 2] = 0.29166672
+        out['u'][:2, 2] = 0.4166667
+        out['u'][2:, 2] = 0.2916667
         out['u'][:2, 4] = 0.1262192
         out['u'][2:, 4] = 0.7475615
-        out['v'][0, 1] = 0.5
-        out['v'][1:, 1] = 0.25
-        out['v'][:2, 2] = 0.29166672
-        out['v'][2:, 2] = 0.41666666
+
+        out['v'][:2, 2] = 0.2916667
+        out['v'][2:, 2] = 0.4166666
         out['v'][:2, 4] = 0.7475615
         out['v'][2:, 4] = 0.1262192
 
@@ -379,9 +359,10 @@ class TestSphericalRayBlaster(TestProjectionRayBlaster):
         return out
 
     @pytest.fixture(scope="class")
-    def expected_result(self, instance_kws, fov_radius):
+    def expected_result(self, instance_kws, intersection_radius):
         out = copy.deepcopy(self._expected_result)
-        out['tfar'][:] += 2 / np.cos(np.radians(fov_radius))
+        out['tfar'][:] += np.float32(
+            np.sqrt(4 + (intersection_radius / 2) ** 2))
         if not instance_kws.get('dont_include_center', False):
             out['tfar'] = np.hstack([np.array([2.4], "f4"), out['tfar']])
             out['Ng'] = np.vstack([
@@ -423,7 +404,7 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
     def expected_result(self):
         out = copy.deepcopy(self._expected_result)
         out['tfar'] = np.array([
-            1.394231, 1.553455, 1.394803, 1.538504
+            1.3942306, 1.5534554, 1.394803, 1.5385036
         ], "f4")
         out['u'] = np.array([
             0.4938756, 0.46215066, 0.26069573, 0.29107162
@@ -470,8 +451,8 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
         out['tfar'][3, (1, 2, 4)] = [
             7.8694570e-01, 1.6668625e-01, 5.2267307e-01]
 
-        out['u'][0, (1, 2, 4)] = [0.592483, 0.397335, 0.32914]
-        out['u'][1, (1, 2, 4)] = [0.342789, 0.078963, 0.281721]
+        out['u'][0, (1, 2, 4)] = [0.592483, 0.397335, 0.3291404]
+        out['u'][1, (1, 2, 4)] = [0.342789, 0.07896312, 0.2817207]
         out['u'][2, (1, 2, 4)] = [0.33207, 0.362786, 0.636917]
         out['u'][3, (1, 2, 4)] = [0.08237622, 0.6788575, 0.32086235]
 

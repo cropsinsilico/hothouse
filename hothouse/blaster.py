@@ -251,10 +251,6 @@ class RayBlaster(traitlets.HasTraits):
         directions (np.ndarray): Unit vectors describing ray directions.
         intensity (float, optional): Total intensity of light in rays.
         diffuse_intensity (float, optional): Diffuse intensity.
-        multibounce (bool, optional): If True, rays should be tracked
-            through reflections/transmission.
-        power_threshold (float, optional): Threshold below which rays
-            should no longer be tracked during bounces.
 
     """
     origins = traittypes.Array().valid(
@@ -263,8 +259,6 @@ class RayBlaster(traitlets.HasTraits):
         check_shape(None, 3), check_dtype("f4"))
     intensity = traitlets.CFloat(1.0)
     diffuse_intensity = traitlets.CFloat(0.0)
-    multibounce = traitlets.CBool(False)
-    power_threshold = traitlets.CFloat(0.001)
 
     @property
     def ray_intensity(self):
@@ -274,7 +268,8 @@ class RayBlaster(traitlets.HasTraits):
     def cast_once(self, scene, verbose_output=False,
                   query_type=QueryType.DISTANCE,
                   origins=None, directions=None, dists=None,
-                  in_bounce=False):
+                  multibounce=False, in_bounce=False,
+                  power_threshold=0.001):
         r"""Run the embree raytrace once on a scene.
 
         Args:
@@ -288,8 +283,12 @@ class RayBlaster(traitlets.HasTraits):
                 to use.
             dists (np.ndarray, optional): Array of distances for each
                 ray that should be updated.
+            multibounce (bool, optional): If True, rays should be tracked
+                through reflections/transmission.
             in_bounce (bool, optional): If True, the provided rays are
                 for a bounce.
+            power_threshold (float, optional): Threshold below which rays
+                should no longer be tracked during bounces.
 
         Returns:
             np.ndarray, dict: Ray trace result.
@@ -299,10 +298,9 @@ class RayBlaster(traitlets.HasTraits):
             origins = self.origins
         if directions is None:
             directions = self.directions
-        multibounce = self.multibounce
         if (not verbose_output) or in_bounce:
             multibounce = False
-        # if self.multibounce:
+        # if multibounce:
         #     callback_handler = RayCollisionMultiBounce(
         #         self.origins.shape[0], 10,
         #         scene.transmittance_periodic,
@@ -325,12 +323,12 @@ class RayBlaster(traitlets.HasTraits):
         output = scene.post_cast(query_type, output)
         if not multibounce:
             return output
-        # if self.multibounce and isinstance(output, dict):
+        # if multibounce and isinstance(output, dict):
         #     output['bounces'] = callback_handler.bounces
         bounces = []
         callback0 = MultibounceCallback(
             origins=origins, directions=directions, hits=output,
-            power_threshold=self.power_threshold,
+            power_threshold=power_threshold,
             transmittance=scene.transmittance,
             reflectance=scene.reflectance,
         )
@@ -340,7 +338,7 @@ class RayBlaster(traitlets.HasTraits):
                 scene, verbose_output=True, query_type=query_type,
                 origins=callback.next_origins,
                 directions=callback.next_directions,
-                in_bounce=True,
+                multibounce=multibounce, in_bounce=True,
             )
             iout.update(
                 ray_dir=callback.next_directions,
@@ -368,12 +366,14 @@ class RayBlaster(traitlets.HasTraits):
         )
         return output
 
-    def compute_count(self, scene):
+    def compute_count(self, scene, **kwargs):
         r"""Run the raytracer to determine how each ray will intersect
         the scene.
 
         Args:
             scene (hothouse.scene.Scene): Scene to cast rays on.
+            **kwargs: Additional keyword arguments are passed to
+                cast_once.
 
         Returns:
             dict: Raytrace results::
@@ -396,11 +396,12 @@ class RayBlaster(traitlets.HasTraits):
 
         """
         output = self.cast_once(
-            scene, verbose_output=True, query_type=QueryType.INTERSECT
+            scene, verbose_output=True, query_type=QueryType.INTERSECT,
+            **kwargs
         )
         return output
 
-    def compute_flux_density(self, scene, light_sources, any_direction=True):
+    def compute_flux_density(self, scene, light_sources, **kwargs):
         r"""Compute the flux density on each scene element touched by
         this blaster from a set of light sources.
 
@@ -408,20 +409,15 @@ class RayBlaster(traitlets.HasTraits):
             scene (hothouse.scene.Scene): Scene to get flux density for.
             light_sources (list): Set of RayBlasters used to determine
                 the light incident on scene elements.
-            any_direction (bool, optional): If True, the flux is deposited
-                on component reguardless of if the blaster ray hits the
-                front or back of a component surface. If False, flux
-                is only deposited if the blaster ray hits the front.
-                Defaults to True.
+            **kwargs: Additional keyword arguments are passed to
+                scene.compute_flux_density.
 
         Returns:
             array: Total flux density on surfaces intercepted by the
                 rays.
 
         """
-        fd_scene = scene.compute_flux_density(
-            light_sources, any_direction=any_direction
-        )
+        fd_scene = scene.compute_flux_density(light_sources, **kwargs)
         out = np.zeros(self.nx * self.ny, "f4")
         camera_hits = self.compute_count(scene)
         for ci, component in enumerate(scene.components):
@@ -686,7 +682,7 @@ class SunRayBlaster(OrthographicRayBlaster):
                 (self.height / 2.0)
                 - np.abs(
                     np.linalg.norm(v - self.ground)
-                    * np.tan(np.radians(self.solar_altitude))
+                    * sun_calc.stable_tan(np.radians(self.solar_altitude))
                 )
             ),
         )
@@ -819,8 +815,6 @@ class ProjectionRayBlaster(RayBlaster):
             direction.
         ny (int, optional): Number of rays distributed in the y (up)
             direction.
-        multibounce (bool, optional): If True, rays should be tracked
-            through reflections/transmission.
 
     """
     fov_width = traitlets.CFloat(90.0)
@@ -833,7 +827,6 @@ class ProjectionRayBlaster(RayBlaster):
     height = traitlets.CFloat(1.0)
     nx = traitlets.CInt(512)
     ny = traitlets.CInt(512)
-    multibounce = traitlets.CBool(False)
 
     @traitlets.default("east")
     def _default_east(self):
@@ -866,7 +859,7 @@ class ProjectionRayBlaster(RayBlaster):
         r"""float: Distance of the camera from the image plane."""
         return (
             (self.width / 2.0)
-            / np.tan(np.radians(self.fov_width / 2.0))
+            / sun_calc.stable_tan(np.radians(self.fov_width / 2.0))
         )
 
     @cached_property

@@ -3,7 +3,6 @@ import pytest
 import pytz
 import datetime
 import numpy as np
-from numpy.testing import assert_almost_equal, assert_allclose
 
 
 @pytest.fixture(scope="session")
@@ -108,7 +107,17 @@ def scene_pyramid(model_pyramid):
 
 
 @pytest.fixture(scope="session")
-def assert_dicts_almost_equal():
+def assert_almost_equal():
+    r"""Assert that arrays are close."""
+
+    def _assert_almost_equal(a, b, decimals=7, **kwargs):
+        np.testing.assert_almost_equal(a, b, decimals=decimals, **kwargs)
+
+    return _assert_almost_equal
+
+
+@pytest.fixture(scope="session")
+def assert_dicts_almost_equal(assert_almost_equal):
     r"""Assert that dictionaries of numpy arrays are almost equal."""
 
     def _assert_dicts_almost_equal(a, b, ignore_keys=None, **kwargs):
@@ -132,7 +141,17 @@ def assert_dicts_almost_equal():
 
 
 @pytest.fixture(scope="session")
-def assert_dicts_allclose():
+def assert_allclose():
+    r"""Assert that arrays are close."""
+
+    def _assert_allclose(a, b, rtol=1e-07, atol=1e-15, **kwargs):
+        np.testing.assert_allclose(a, b, rtol=rtol, atol=atol, **kwargs)
+
+    return _assert_allclose
+
+
+@pytest.fixture(scope="session")
+def assert_dicts_allclose(assert_allclose):
     r"""Assert that dictionaries of numpy arrays are almost equal."""
 
     def _assert_dicts_allclose(a, b, ignore_keys=None, **kwargs):

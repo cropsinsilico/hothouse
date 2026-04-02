@@ -106,6 +106,234 @@ def norm_along_axis(a, axis=0):
     return np.moveaxis(np.divide(np.moveaxis(a, axis, 0), norm), 0, axis)
 
 
+def stable_sin(theta, rtol=1e-05, atol=1e-08):
+    r"""Version of sin that reduces numerical error by reducing the range
+    of the function to [0, 2 * pi) and handling the special cases of
+    0, pi / 2, pi, 3 * pi / 2 explicitly.
+
+    Args:
+        theta (np.ndarray): Angle(s) to compute sin of.
+        rtol (float, optional): Relative tolerance to use for detection
+            of special cases.
+        atol (float, optional): Absolute tolerance to use for detection
+            of special cases.
+
+    Returns:
+        np.ndarray: Result.
+
+    """
+    rem = theta % (2.0 * np.pi)
+    if isinstance(theta, np.ndarray):
+        rem[rem < 0] += 2.0 * np.pi
+        out = np.sin(rem)
+        out[np.isclose(rem, 0, rtol=rtol, atol=atol)] = 0.0
+        out[np.isclose(rem, np.pi / 2, rtol=rtol, atol=atol)] = 1.0
+        out[np.isclose(rem, np.pi, rtol=rtol, atol=atol)] = 0.0
+        out[np.isclose(rem, 3 * np.pi / 2, rtol=rtol, atol=atol)] = -1.0
+        out[np.isclose(rem, 2 * np.pi, rtol=rtol, atol=atol)] = 0.0
+    else:
+        if rem < 0:
+            rem += 2.0 * np.pi
+        if ((np.isclose(rem, 0.0, rtol=rtol, atol=atol)
+             or np.isclose(rem, np.pi, rtol=rtol, atol=atol)
+             or np.isclose(rem, 2 * np.pi, rtol=rtol, atol=atol))):
+            out = type(theta)(0.0)
+        elif np.isclose(rem, np.pi / 2, rtol=rtol, atol=atol):
+            out = type(theta)(1.0)
+        elif np.isclose(rem, 3 * np.pi / 2, rtol=rtol, atol=atol):
+            out = type(theta)(-1.0)
+        else:
+            out = np.sin(rem)
+    return out
+
+
+def stable_cos(theta, rtol=1e-05, atol=1e-08):
+    r"""Version of cos that reduces numerical error by reducing the range
+    of the function to [0, 2 * pi) and handling the special cases of
+    0, pi / 2, pi, 3 * pi / 2 explicitly.
+
+    Args:
+        theta (np.ndarray): Angle(s) to compute cos of.
+        rtol (float, optional): Relative tolerance to use for detection
+            of special cases.
+        atol (float, optional): Absolute tolerance to use for detection
+            of special cases.
+
+    Returns:
+        np.ndarray: Result.
+
+    """
+    rem = theta % (2.0 * np.pi)
+    if isinstance(theta, np.ndarray):
+        rem[rem < 0] += 2.0 * np.pi
+        out = np.cos(rem)
+        out[np.isclose(rem, 0.0, rtol=rtol, atol=atol)] = 1.0
+        out[np.isclose(rem, np.pi / 2, rtol=rtol, atol=atol)] = 0.0
+        out[np.isclose(rem, np.pi, rtol=rtol, atol=atol)] = -1.0
+        out[np.isclose(rem, 3 * np.pi / 2, rtol=rtol, atol=atol)] = 0.0
+        out[np.isclose(rem, 2 * np.pi, rtol=rtol, atol=atol)] = 1.0
+    else:
+        if rem < 0:
+            rem += 2.0 * np.pi
+        if ((np.isclose(rem, np.pi / 2, rtol=rtol, atol=atol)
+             or np.isclose(rem, 3 * np.pi / 2, rtol=rtol, atol=atol))):
+            out = type(theta)(0.0)
+        elif ((np.isclose(rem, 0, rtol=rtol, atol=atol)
+               or np.isclose(rem, 2 * np.pi, rtol=rtol, atol=atol))):
+            out = type(theta)(1.0)
+        elif np.isclose(rem, np.pi, rtol=rtol, atol=atol):
+            out = type(theta)(-1.0)
+        else:
+            out = np.cos(rem)
+    return out
+
+
+def stable_tan(theta, rtol=1e-05, atol=1e-08):
+    r"""Version of tan that reduces numerical error by reducing the range
+    of the function to [0, pi) and handling the special cases of
+    0, pi / 4, pi / 2, 3 * pi / 4 explicitly.
+
+    Args:
+        theta (np.ndarray): Angle(s) to compute tan of.
+        rtol (float, optional): Relative tolerance to use for detection
+            of special cases.
+        atol (float, optional): Absolute tolerance to use for detection
+            of special cases.
+
+    Returns:
+        np.ndarray: Result.
+
+    """
+    # return (stable_sin(theta, rtol=rtol, atol=atol)
+    #         / stable_cos(theta, rtol=rtol, atol=atol))
+    rem = theta % np.pi
+    if isinstance(theta, np.ndarray):
+        rem[rem < 0] += np.pi
+        out = np.tan(rem)
+        out[np.isclose(rem, 0, rtol=rtol, atol=atol)] = 0.0
+        out[np.isclose(rem, np.pi / 4, rtol=rtol, atol=atol)] = 1.0
+        out[np.isclose(rem, 3 * np.pi / 4, rtol=rtol, atol=atol)] = -1.0
+        out[np.isclose(rem, np.pi, rtol=rtol, atol=atol)] = 0.0
+        idx_inf = np.isclose(rem, np.pi / 2, rtol=rtol, atol=atol)
+        idx_neg = rem[idx_inf] > (np.pi / 2)
+        out[idx_inf] = np.inf
+        out[idx_inf][idx_neg] = -np.inf
+    else:
+        if rem < 0:
+            rem += np.pi
+        if ((np.isclose(rem, 0.0, rtol=rtol, atol=atol)
+             or np.isclose(rem, np.pi, rtol=rtol, atol=atol))):
+            out = type(theta)(0.0)
+        elif np.isclose(rem, np.pi / 4, rtol=rtol, atol=atol):
+            out = type(theta)(1.0)
+        elif np.isclose(rem, np.pi / 2, rtol=rtol, atol=atol):
+            out = type(theta)(np.inf)
+        elif np.isclose(rem, 3 * np.pi / 4, rtol=rtol, atol=atol):
+            out = type(theta)(-1.0)
+        else:
+            out = np.tan(rem)
+    return out
+
+
+def stable_arcsin(x, rtol=1e-05, atol=1e-08):
+    r"""Version of arcsin that reduces numerical error by handling the
+    special cases of 0, -1, and 1 explicitly.
+
+    Args:
+        x (np.ndarray): Value(s) to compute arcsin of.
+        rtol (float, optional): Relative tolerance to use for detection
+            of special cases.
+        atol (float, optional): Absolute tolerance to use for detection
+            of special cases.
+
+    Returns:
+        np.ndarray: Result.
+
+    """
+    if isinstance(x, np.ndarray):
+        out = np.arcsin(x)
+        out[np.isclose(x, 0, rtol=rtol, atol=atol)] = 0.0
+        out[np.isclose(x, 1, rtol=rtol, atol=atol)] = np.pi / 2
+        out[np.isclose(x, -1, rtol=rtol, atol=atol)] = -np.pi / 2
+    elif np.isclose(x, 0, rtol=rtol, atol=atol):
+        out = 0.0
+    elif np.isclose(x, 1, rtol=rtol, atol=atol):
+        out = np.pi / 2
+    elif np.isclose(x, -1, rtol=rtol, atol=atol):
+        out = -np.pi / 2
+    else:
+        out = np.arcsin(x)
+    return out
+
+
+def stable_arccos(x, rtol=1e-05, atol=1e-08):
+    r"""Version of arccos that reduces numerical error by handling the
+    special cases of 0, -1, and 1 explicitly.
+
+    Args:
+        x (np.ndarray): Value(s) to compute arccos of.
+        rtol (float, optional): Relative tolerance to use for detection
+            of special cases.
+        atol (float, optional): Absolute tolerance to use for detection
+            of special cases.
+
+    Returns:
+        np.ndarray: Result.
+
+    """
+    if isinstance(x, np.ndarray):
+        out = np.arccos(x)
+        out[np.isclose(x, 0, rtol=rtol, atol=atol)] = np.pi / 2
+        out[np.isclose(x, 1, rtol=rtol, atol=atol)] = 0.0
+        out[np.isclose(x, -1, rtol=rtol, atol=atol)] = np.pi
+    elif np.isclose(x, 0, rtol=rtol, atol=atol):
+        out = np.pi / 2
+    elif np.isclose(x, 1, rtol=rtol, atol=atol):
+        out = 0.0
+    elif np.isclose(x, -1, rtol=rtol, atol=atol):
+        out = np.pi
+    else:
+        out = np.arccos(x)
+    return out
+
+
+def stable_arctan(x, rtol=1e-05, atol=1e-08):
+    r"""Version of arctan that reduces numerical error by handling the
+    special cases of 0, -1, 1, and np.inf explicitly.
+
+    Args:
+        x (np.ndarray): Value(s) to compute arctan of.
+        rtol (float, optional): Relative tolerance to use for detection
+            of special cases.
+        atol (float, optional): Absolute tolerance to use for detection
+            of special cases.
+
+    Returns:
+        np.ndarray: Result.
+
+    """
+    if isinstance(x, np.ndarray):
+        out = np.arctan(x)
+        out[np.isclose(x, 0, rtol=rtol, atol=atol)] = 0.0
+        out[np.isclose(x, 1, rtol=rtol, atol=atol)] = np.pi / 4
+        out[np.isclose(x, -1, rtol=rtol, atol=atol)] = -np.pi / 4
+        out[np.isclose(x, np.inf, rtol=rtol, atol=atol)] = np.pi / 2
+        out[np.isclose(x, -np.inf, rtol=rtol, atol=atol)] = -np.pi / 2
+    elif np.isclose(x, 0, rtol=rtol, atol=atol):
+        out = 0.0
+    elif np.isclose(x, 1, rtol=rtol, atol=atol):
+        out = np.pi / 4
+    elif np.isclose(x, -1, rtol=rtol, atol=atol):
+        out = -np.pi / 4
+    elif np.isclose(x, np.inf, rtol=rtol, atol=atol):
+        out = np.pi / 2
+    elif np.isclose(x, -np.inf, rtol=rtol, atol=atol):
+        out = -np.pi / 2
+    else:
+        out = np.arctan(x)
+    return out
+
+
 def rotation_matrix(theta, u):
     r"""Get the rotation matrix necessary to rotate a 3D point around
     a unit vector by a specified angle.
@@ -136,8 +364,8 @@ def rotation_matrix(theta, u):
     ux = u[..., 0]
     uy = u[..., 1]
     uz = u[..., 2]
-    cos_theta = np.cos(theta)
-    sin_theta = np.sin(theta)
+    cos_theta = stable_cos(theta)
+    sin_theta = stable_sin(theta)
     inv_cos_theta = 1 - cos_theta
     dim_inner = u.ndim - 1
     dim_outer = u.ndim

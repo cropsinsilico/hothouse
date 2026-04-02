@@ -1,7 +1,6 @@
 import pytest
 import copy
 import numpy as np
-from numpy.testing import assert_allclose
 from hothouse import scene
 
 
@@ -47,7 +46,7 @@ class TestScene:
         )
         return out
 
-    def test_attributes(self, instance, nface):
+    def test_attributes(self, instance, nface, assert_allclose):
         r"""Test various attributes."""
         assert instance.ncomponents == 1
         assert len(instance.transmittance) == 1
@@ -66,7 +65,6 @@ class TestScene:
                 [19.73708, 19.73708, -19.73708],
                 [19.73708, 19.73708, 19.73708]
             ], "f4"),
-            atol=1e-7, rtol=1e-6
         )
 
     def test_compute_hit_count(self, instance, blaster, nface):
@@ -77,24 +75,23 @@ class TestScene:
         assert result[0].sum() == blaster.nx * blaster.ny
 
     def test_compute_solar_ppfd(self, instance, nface, location_champaign,
-                                datetime_champaign, expected_results):
+                                datetime_champaign, expected_results,
+                                assert_allclose):
         r"""Test compute_solar_ppfd method."""
         result = instance.compute_solar_ppfd(*location_champaign,
                                              datetime_champaign("noon"))
         assert len(result) == 1
         assert result[0].shape == (nface, )
         print(self, result[0].sum())
-        assert_allclose(result[0].sum(), expected_results['solar_ppfd'],
-                        atol=1e-7, rtol=1e-6)
+        assert_allclose(result[0].sum(), expected_results['solar_ppfd'])
 
     def test_compute_flux_density(self, instance, nface, blaster,
-                                  expected_results):
+                                  expected_results, assert_allclose):
         r"""Test compute_flux_density method."""
         result = instance.compute_flux_density(blaster)
         assert len(result) == 1
         assert result[0].shape == (nface, )
-        assert_allclose(result[0].sum(), expected_results['flux_density'],
-                        atol=1e-7, rtol=1e-6)
+        assert_allclose(result[0].sum(), expected_results['flux_density'])
 
 
 class TestPeriodicScene(TestScene):
