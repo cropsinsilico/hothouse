@@ -249,6 +249,8 @@ class RayBlaster(traitlets.HasTraits):
     Args:
         origins (np.ndarray): Ray origins.
         directions (np.ndarray): Unit vectors describing ray directions.
+        ray_intensity (np.ndarray, optional): Intensity of light in each
+           ray.
         intensity (float, optional): Total intensity of light in rays.
         diffuse_intensity (float, optional): Diffuse intensity.
 
@@ -257,13 +259,21 @@ class RayBlaster(traitlets.HasTraits):
         check_shape(None, 3), check_dtype("f4"))
     directions = traittypes.Array().valid(
         check_shape(None, 3), check_dtype("f4"))
-    intensity = traitlets.CFloat(1.0)
+    ray_intensity = traittypes.Array().valid(check_dtype("f4"))
+    intensity = traitlets.CFloat()
     diffuse_intensity = traitlets.CFloat(0.0)
 
-    @property
-    def ray_intensity(self):
-        r"""float: Intensity of single ray."""
-        return self.intensity / self.origins.shape[0]
+    @traitlets.default("intensity")
+    def _default_intensity(self):
+        if self.trait_has_value("ray_intensity"):
+            return self.ray_intensity.sum()
+        return 1.0
+
+    @traitlets.default("ray_intensity")
+    def _default_ray_intensity(self):
+        out = np.empty((self.origins.shape[0], ), "f4")
+        out.fill(self.intensity / len(out))
+        return out
 
     def cast_once(self, scene, verbose_output=False,
                   query_type=QueryType.DISTANCE,
@@ -469,6 +479,8 @@ class OrthographicRayBlaster(RayBlaster):
 
     @traitlets.default("intensity")
     def _default_intensity(self):
+        if self.trait_has_value("ray_intensity"):
+            return self.ray_intensity.sum()
         if not self.trait_has_value("intensity_density"):
             return 1.0
         return self.intensity_density * self.width * self.height

@@ -106,6 +106,74 @@ def norm_along_axis(a, axis=0):
     return np.moveaxis(np.divide(np.moveaxis(a, axis, 0), norm), 0, axis)
 
 
+def incident_power_direct(ray_dir, norm, area=None, any_direction=True):
+    r"""Calculate the fraction of a ray flux that will be deposited on
+    a face.
+
+    Args:
+        ray_dir (np.ndarray): Unit vectors for ray(s).
+        norm (np.ndarray): Normal vectors for faces the ray(s) intersect.
+        area (np.ndarray, None): Area of the faces the ray(s) intersect.
+            This should also be half the magnitude of the normal vectors
+            so passing it directly if already calculated can save time.
+        any_direction (bool, optional): If True, power can be deposited
+            from any direction. If False, power can only be deposited if
+            a ray intersects a face from the direction of the face's
+            normal vector.
+
+    Returns:
+        np.ndarray: Fraction of power deposited on each face (cos(theta))
+
+    """
+    if area is None:
+        out = (
+            np.sum(norm * -ray_dir, axis=-1)
+            / (np.linalg.norm(norm, axis=-1) *
+               np.linalg.norm(ray_dir, axis=-1))
+        )
+    else:
+        out = (
+            np.sum(norm * -ray_dir, axis=-1)
+            / (2.0 * area * np.linalg.norm(ray_dir, axis=-1))
+        )
+    if any_direction:
+        out = np.abs(out)
+    else:
+        out[out < 0] = 0
+    return out
+
+
+def incident_power_diffuse(up_dir, norm, area=None):
+    r"""Calculate the fraction of a diffuse flux that will be deposited
+    on a face.
+
+    Args:
+        up_dir (np.ndarray): Unit normal to the ground.
+        norm (np.ndarray): Normal vectors for faces the ray(s) intersect.
+        area (np.ndarray, None): Area of the faces the ray(s) intersect.
+            This should also be half the magnitude of the normal vectors
+            so passing it directly if already calculated can save time.
+
+    Returns:
+        np.ndarray: Fraction of diffuse flux deposited on each face.
+
+    """
+    if area is None:
+        out = (
+            np.sum(norm * up_dir, axis=-1)
+            / (np.linalg.norm(norm, axis=-1) *
+               np.linalg.norm(up_dir, axis=-1))
+        )
+    else:
+        out = (
+            np.sum(norm * up_dir, axis=-1)
+            / (2.0 * area * np.linalg.norm(up_dir, axis=-1))
+        )
+    # return pvlib.irradiance.isotropic(
+    #     np.degrees(stable_arccos(out)), 1.0)
+    return (1 + out) / 2
+
+
 def stable_sin(theta, rtol=1e-05, atol=1e-08):
     r"""Version of sin that reduces numerical error by reducing the range
     of the function to [0, 2 * pi) and handling the special cases of

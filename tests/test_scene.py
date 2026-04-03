@@ -12,8 +12,14 @@ class TestScene:
         'ground': np.array([0.0, 0.0, -19.73708], "f4"),
     }
     _expected_results = {
-        'solar_ppfd': np.float32(307746.75),
-        'flux_density': np.float32(0.13100827),
+        'solar_ppfd': np.array([
+            3.0774675e5, 1.2462395, 1.5996583e3, 3.2056952e2
+        ], "f4"),
+        'flux': np.array([
+            0.95618385, 0, 0.037574425, 0.0009960248], "f4"),
+        'flux_density': np.array([
+            0.13100827, 0, 0.0050536012, 0.00013646694], "f4"),
+        'tfar': np.array([np.inf, 0.52852875, 1e37, np.inf], "f4"),
     }
 
     @pytest.fixture(scope="class")
@@ -27,8 +33,14 @@ class TestScene:
         return out
 
     @pytest.fixture(scope="class")
-    def expected_results(self):
-        return self._expected_results
+    def expected_results(self, blaster):
+        out = dict(
+            self._expected_results,
+            count=np.array([
+                blaster.nx * blaster.ny, 0, 9945, 273.066667
+            ], "f4"),
+        )
+        return out
 
     @pytest.fixture(scope="class")
     def nface(self, model_sphere):
@@ -67,12 +79,42 @@ class TestScene:
             ], "f4"),
         )
 
-    def test_compute_hit_count(self, instance, blaster, nface):
+    def test_compute_hit_count(self, instance, blaster, nface,
+                               expected_results):
         r"""Test compute_hit_count method."""
         result = instance.compute_hit_count(blaster)
         assert len(result) == 1
         assert result[0].shape == (nface, )
-        assert result[0].sum() == blaster.nx * blaster.ny
+        assert result[0].sum() == expected_results['count'][0]
+
+    def test_compute_flux(self, instance, blaster, nface,
+                          expected_results):
+        r"""Test compute_flux method."""
+        result = instance.compute_flux(blaster)
+        assert len(result) == 1
+        assert result[0].shape == (nface, )
+        assert result[0].sum() == expected_results['flux'][0]
+
+    def test_compute_flux_density(self, instance, nface, blaster,
+                                  expected_results, assert_allclose):
+        r"""Test compute_flux_density method."""
+        result = instance.compute_flux_density(blaster)
+        assert len(result) == 1
+        assert result[0].shape == (nface, )
+        assert_allclose(result[0].sum(), expected_results['flux_density'][0])
+
+    def test_compute_count(self, instance, blaster, nface,
+                           expected_results, assert_allclose):
+        result = instance.compute_count(
+            blaster, accumulators={'flux_density': True})
+        for k, kresult in result.items():
+            assert len(kresult) == 1
+            assert kresult[0].shape == (nface, )
+            actual = np.array([
+                kresult[0].sum(), kresult[0].min(), kresult[0].max(),
+                kresult[0].mean()
+            ], "f4")
+            assert_allclose(actual, expected_results[k])
 
     def test_compute_solar_ppfd(self, instance, nface, location_champaign,
                                 datetime_champaign, expected_results,
@@ -82,16 +124,11 @@ class TestScene:
                                              datetime_champaign("noon"))
         assert len(result) == 1
         assert result[0].shape == (nface, )
-        print(self, result[0].sum())
-        assert_allclose(result[0].sum(), expected_results['solar_ppfd'])
-
-    def test_compute_flux_density(self, instance, nface, blaster,
-                                  expected_results, assert_allclose):
-        r"""Test compute_flux_density method."""
-        result = instance.compute_flux_density(blaster)
-        assert len(result) == 1
-        assert result[0].shape == (nface, )
-        assert_allclose(result[0].sum(), expected_results['flux_density'])
+        actual = np.array([
+            result[0].sum(), result[0].min(), result[0].max(),
+            result[0].mean()
+        ], "f4")
+        assert_allclose(actual, expected_results['solar_ppfd'])
 
 
 class TestPeriodicScene(TestScene):
@@ -108,11 +145,21 @@ class TestPeriodicScene(TestScene):
         return out
 
     @pytest.fixture(scope="class")
-    def expected_results(self):
-        out = copy.deepcopy(self._expected_results)
-        out.update(
-            solar_ppfd=np.float32(496883.7),
-            flux_density=np.float32(0.13121203),
+    def expected_results(self, blaster):
+        out = dict(
+            self._expected_results,
+            count=np.array([
+                blaster.nx * blaster.ny, 0, 18224, 273.066667
+            ], "f4"),
+            flux=np.array([
+                0.9650246, 0, 0.068854332, 0.001005234
+            ], "f4"),
+            flux_density=np.array([
+                0.13121204, 0, 0.0093794512, 0.00013667921
+            ], "f4"),
+            solar_ppfd=np.array([
+                4.9688369e5, 1.2462395, 1.1813491e4, 5.1758716e2
+            ], "f4"),
         )
         return out
 

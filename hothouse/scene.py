@@ -3,12 +3,11 @@ import traitlets
 import pythreejs
 import numpy as np
 import functools
-import pvlib
 # from IPython.core.display import display
 
 from .model import Model
 from .blaster import (
-    QueryType, RayBlaster, OrthographicRayBlaster, SunRayBlaster,
+    QueryType, RayBlaster, SunRayBlaster,
 )
 from .traits_support import check_shape, check_dtype
 from . import sun_calc
@@ -24,6 +23,143 @@ EmbreeScene = rtcs.EmbreeScene
 # EmbreeScene = CallbackScene
 
 cached_property = getattr(functools, "cached_property", property)
+
+
+class CastAccumulator(traitlets.HasTraits):
+
+    r"""Wrapper for function to accumulate ray trace results.
+
+    Args:
+        name (str): Name of accumulator.
+        function (callable, optional): Function method that should be
+            used to accumulate ray trace results. If not provided, the
+            Scene class method with the name f'_accumulate_{name}' will
+            be used. The function must take the following arguments::
+
+                dst (np.ndarray): Destination array that values
+                    should be added to.
+                component (hothouse.model.Model): Scene component
+                    that value is being calculated for.
+                ray_dir (np.ndarray): Directions of rays.
+                power (np.ndarray): Power of rays.
+                primID (np.ndarray): Index of the component face that
+                    each ray intersects within the component geometry
+                    that contains it. -1 for no intersection.
+                tfar (np.ndarray): The distance that each ray
+                    traveled before intersecting a surface in the
+                    scene.
+                Ng (np.ndarray): Normal vector for the surface that
+                    each ray intersected.
+                u (np.ndarray): Projection of the ray up along the
+                    surface that each ray intersected
+                    (barycentric u coordinate of hit).
+                v (np.ndarray): Projection of the ray east along the
+                    surface that each ray intersected
+                    (barycentric v coordinate of hit).
+
+        dtype (np.dtype, optional): Data type of the result array that
+            the accumulator expects.
+        value (int, float, optional): Initial value that the result
+            array should be populated with.
+        no_multibounce (bool, optional): If True, don't accumulate for
+            bounces.
+        kws (dict, optional): Keyword arguments to pass to the
+            accumulator function when it is called via the accumulate
+            method.
+
+    """
+
+    _default_dtypes = {'count': np.dtype('i4')}
+    _default_no_bounce = ['tfar']
+    _default_values = {'tfar': 1e37}
+    _accum_keys = ["ray_dir", "power", 'primID', 'tfar', 'Ng', 'u', 'v']
+
+    name = traitlets.Unicode()
+    function = traitlets.Callable()
+    dtype = traitlets.Instance(np.dtype)
+    value = traitlets.CFloat()
+    no_multibounce = traitlets.Bool(False)
+    kws = traitlets.Dict()
+
+    @traitlets.default("dtype")
+    def _default_dtype(self):
+        return self._default_dtypes.get(self.name, np.dtype("f4"))
+
+    @traitlets.default("value")
+    def _default_value(self):
+        return self._default_values.get(self.name, 0)
+
+    @traitlets.default("no_multibounce")
+    def _default_no_multibounce(self):
+        return (self.name in self._default_no_bounce)
+
+    @traitlets.default("function")
+    def _default_function(self):
+        return getattr(Scene, f'_accumulate_{self.name}')
+
+    def accumulate(self, dst, ci, component, counts,
+                   idx=None, idx_bounces=None, **kwargs):
+        r"""Accumulate raytracer results for a component.
+
+        Args:
+            dst (dict): Mapping to contain accumulated results.
+            ci (int): Component index.
+            component (hothouse.model.Model): Scene component
+                that value is being calculated for.
+            counts (dict): Raytracer results.
+            idx (np.ndarray, optional): Index of rays that hit the
+                provided component.
+            idx_bounces (np.ndarray, optional): Index of ray bounces
+                that hit the provided component.
+            **kwargs: Additional keyword arguments can be used to
+                override or supplement values in counts.
+
+        """
+        dst.setdefault(self.name, {})
+        if ci not in dst[self.name]:
+            dst[self.name][ci] = np.empty(
+                (component.triangles.shape[0], ), self.dtype)
+            dst[self.name][ci].fill(self.value)
+        if idx is None:
+            idx = (counts['geomID'] == ci)
+        args = []
+        for k in self._accum_keys:
+            if k in kwargs:
+                v = kwargs[k]
+            else:
+                v = counts[k]
+            args.append(v[idx, ...])
+        self.function(dst[self.name][ci], component, *args, **self.kws)
+        if "bounces" in counts and not self.no_multibounce:
+            self.accumulate(dst, ci, component, counts["bounces"],
+                            idx=idx_bounces)
+
+    @classmethod
+    def from_kwargs(cls, name, v):
+        r"""Create a CastAccumulator instance from user provided keyword
+        arguments.
+
+        Args:
+            name (str): Accumulator name.
+            v (callable, tuple, dict): Callable accumulator function,
+                tuple containing an accumulator function and a dictionary
+                of keyword arguments that should be passed to the
+                accumulator function, or a dictionary of keyword
+                arguments to pass to the CastAccumulator constructor.
+
+        Returns:
+            CastAccumulator: Accumulator instance.
+
+        """
+        if v is True:
+            return cls(name=name)
+        if isinstance(v, tuple):
+            return cls(name=name, function=v[0], kws=v[1])
+        elif isinstance(v, dict):
+            return cls(name=name, **v)
+        elif isinstance(v, cls):
+            return v
+        return cls(name=name, function=v)
 
 
 class Scene(traitlets.HasTraits):
@@ -80,6 +216,115 @@ class Scene(traitlets.HasTraits):
         self.meshes.append(
             TriangleMesh(self.embree_scene, component.triangles))
 
+    def compute_count(self, blasters, accumulators=None,
+                      any_direction=True, **kwargs):
+        r"""Run the raytracer to determine how each ray from a set of
+        blasters will intersect this scene.
+
+        Args:
+            blasters (hothouse.blaster.RayBlaster, list): One or more
+                blasters to cast on the scene.
+            accumulators (dict, optional): Mapping between property
+                names and CastAccumulator or values that can be passed to
+                CastAccumulator.from_kwargs to create an accumulator.
+                Default accumulators (which can be turned off in the
+                provided accumulators dictionary via False) include::
+
+                    count (np.ndarray): Number of rays intersecting each
+                        face.
+                    flux (np.ndarray): Flux incident on each face.
+                    tfar (np.ndarray): The smallest distance that a ray
+                        from any of the blasters traveled before
+                        intersecting the face (does not include
+                        reflected/transmitted arrays).
+
+            any_direction (bool, optional): If True, light is deposited
+                on component reguardless of if the blaster rays hit the
+                front or back of a component surface. If False, light
+                is only deposited if the blaster rays hit the front.
+                Defaults to True.
+            **kwargs: Additional keyword arguments are passed to
+                compute_count for each blaster.
+
+        Returns:
+            dict: Raytrace results for each accumulated property stored
+                as a dictionary mapping between component index and
+                results array for each face in the component.
+
+        """
+        if isinstance(blasters, RayBlaster):
+            blasters = [blasters]
+        if accumulators is None:
+            accumulators = {}
+        accumulators.setdefault('count', True)
+        accumulators.setdefault('flux', True)
+        accumulators.setdefault('tfar', True)
+        accum = {}
+        out = {}
+        for k, v in accumulators.items():
+            if v is False:
+                continue
+            if isinstance(v, CastAccumulator):
+                accum[k] = v
+            elif k == 'flux' and v is True:
+                accum[k] = CastAccumulator.from_kwargs(
+                    k, {'kws': {'any_direction': any_direction}})
+            elif k == 'flux_density' and v is True:
+                assert accumulators.get('flux', False)
+                continue  # Calculate from flux
+            else:
+                accum[k] = CastAccumulator.from_kwargs(k, v)
+        for blaster in blasters:
+            counts = blaster.compute_count(self, **kwargs)
+            for ci, component in enumerate(self.components):
+                idx = (counts['geomID'] == ci)
+                idx_bounces = (
+                    None if "bounces" not in counts
+                    else (counts['bounces']['geomID'] == ci)
+                )
+                for v in accum.values():
+                    v.accumulate(out, ci, component, counts,
+                                 idx=idx, idx_bounces=idx_bounces,
+                                 ray_dir=blaster.directions,
+                                 power=blaster.ray_intensity)
+                if (('flux' in accum
+                     and blaster.diffuse_intensity > 0)):
+                    out['flux'][ci] += (
+                        component.areas * blaster.diffuse_intensity
+                        * sun_calc.incident_power_diffuse(
+                            self.up, component.normals,
+                            area=component.areas,
+                        )
+                    )
+        if ((accumulators.get('flux_density', False)
+             and 'flux_density' not in out)):
+            out['flux_density'] = {
+                ci: out['flux'][ci] / component.areas
+                for ci, component in enumerate(self.components)
+            }
+        return out
+
+    @classmethod
+    def _accumulate_count(cls, dst, component, ray_dir, power, primID,
+                          tfar, Ng, u, v):
+        dst[:] += np.bincount(primID, minlength=dst.shape[0])
+
+    @classmethod
+    def _accumulate_flux(cls, dst, component, ray_dir, power, primID,
+                         tfar, Ng, u, v, any_direction=True):
+        incident_power = power * sun_calc.incident_power_direct(
+            ray_dir, component.normals[primID], component.areas[primID],
+            any_direction=any_direction)
+        dst[:] += np.bincount(primID, weights=incident_power,
+                              minlength=dst.shape[0])
+
+    @classmethod
+    def _accumulate_tfar(cls, dst, component, ray_dir, power, primID,
+                         tfar, Ng, u, v):
+        for iray, iprimID in enumerate(primID):
+            if tfar[iray] < dst[iprimID]:
+                dst[iprimID] = tfar[iray]
+
     def compute_hit_count(self, blaster, **kwargs):
         r"""Run the raytracer to determine how many rays will hit each
         component face in the scene.
@@ -95,14 +340,14 @@ class Scene(traitlets.HasTraits):
                 counts for each face in the component geometry.
 
         """
-        output = blaster.compute_count(self, **kwargs)
-        component_counts = {}
-        for ci, component in enumerate(self.components):
-            hits = output["primID"][output["geomID"] == ci]
-            component_counts[ci] = np.bincount(
-                hits[hits >= 0], minlength=component.triangles.shape[0]
-            )
-        return component_counts
+        accumulators = {
+            'count': True,
+            'flux': False,
+            'tfar': False,
+        }
+        out = self.compute_count(blaster, accumulators=accumulators,
+                                 **kwargs)
+        return out['count']
 
     @property
     def ncomponents(self):
@@ -137,7 +382,8 @@ class Scene(traitlets.HasTraits):
 
     def compute_solar_ppfd(self, latitude, longitude, date,
                            direct_ppfd=None, diffuse_ppfd=None,
-                           any_direction=True, **kwargs):
+                           any_direction=True, multibounce=False,
+                           power_threshold=0.001, **kwargs):
         r"""Compute the photon flux density on each face in the scene
         from solar irradiance for a given location and time/date.
 
@@ -162,6 +408,10 @@ class Scene(traitlets.HasTraits):
                 front or back of a component surface. If False, light
                 is only deposited if the blaster rays hit the front.
                 Defaults to True.
+            multibounce (bool, optional): If True, rays should be tracked
+                through reflections/transmission.
+            power_threshold (float, optional): Threshold below which rays
+                should no longer be tracked during bounces.
             **kwargs: Additional keyword arguments are passed to the
                 SunRayBlaster constructor.
 
@@ -173,7 +423,9 @@ class Scene(traitlets.HasTraits):
         rb = self.get_sun_blaster(latitude, longitude, date,
                                   direct_ppfd=direct_ppfd,
                                   diffuse_ppfd=diffuse_ppfd, **kwargs)
-        return self.compute_flux_density(rb, any_direction=any_direction)
+        return self.compute_flux_density(rb, any_direction=any_direction,
+                                         multibounce=multibounce,
+                                         power_threshold=power_threshold)
 
     def get_sun_blaster(self, latitude, longitude, date,
                         direct_ppfd=None, diffuse_ppfd=None,
@@ -284,8 +536,34 @@ class Scene(traitlets.HasTraits):
             ani.save(fname, writer=writer)
         return ani
 
-    def compute_flux_density(self, light_sources, any_direction=True,
-                             **kwargs):
+    def compute_flux(self, light_sources, **kwargs):
+        r"""Compute the flux on each scene element from a set of light
+        sources. Values will be calculated from the 'intensity'
+        attribute of the light source blasters such that the flux will
+        have the same units as intensity.
+
+        Args:
+            light_sources (list): Set of RayBlasters used to determine
+                the light incident on scene elements.
+            **kwargs: Additional keyword arguments are passed to
+                the compute_count method.
+
+        Returns:
+            dict: Mapping from scene component to an array of flux
+                values for each triangle in the component.
+
+        """
+        accumulators = {
+            'flux': True,
+            'count': False,
+            'tfar': False,
+        }
+        out = self.compute_count(
+            light_sources, accumulators=accumulators, **kwargs
+        )
+        return out['flux']
+
+    def compute_flux_density(self, light_sources, **kwargs):
         r"""Compute the flux density on each scene element from a
         set of light sources. Values will be calculated from the
         'intensity' attribute of the light source blasters such that
@@ -296,113 +574,23 @@ class Scene(traitlets.HasTraits):
         Args:
             light_sources (list): Set of RayBlasters used to determine
                 the light incident on scene elements.
-            any_direction (bool, optional): If True, light is deposited
-                on component reguardless of if the blaster rays hit the
-                front or back of a component surface. If False, light
-                is only deposited if the blaster rays hit the front.
-                Defaults to True.
             **kwargs: Additional keyword arguments are passed to
-                the compute_count method for each light source.
+                the compute_count method.
 
         Returns:
             dict: Mapping from scene component to an array of flux
                 density values for each triangle in the component.
 
         """
-        if isinstance(light_sources, RayBlaster):
-            light_sources = [light_sources]
-        component_fd = {}
-        for ci, component in enumerate(self.components):
-            component_fd[ci] = np.zeros(component.triangles.shape[0], "f4")
-        for blaster in light_sources:
-            counts = blaster.compute_count(self, **kwargs)
-            if "bounces" in counts:
-                orthographic = isinstance(blaster, OrthographicRayBlaster)
-                for i in range(max(counts["bounces"]["nbounce"])):
-                    orthographic = (orthographic and (i == 0))
-                    if orthographic:
-                        ray_dir = blaster.forward
-                        ray_intensity = blaster.ray_intensity
-                        diffuse_intensity = blaster.diffuse_intensity
-                    else:
-                        ray_dir = counts["bounces"]["ray_dir"][:, i, :]
-                        ray_intensity = (
-                            blaster.ray_intensity
-                            * counts["bounces"]["power"][:, i])
-                        diffuse_intensity = 0.0
-                    primID = counts["bounces"]["primID"][:, i]
-                    geomID = counts["bounces"]["geomID"][:, i]
-                    self._accumulate_hits(component_fd, primID, geomID,
-                                          ray_dir, ray_intensity,
-                                          diffuse_intensity,
-                                          orthographic=orthographic,
-                                          any_direction=any_direction)
-            else:
-                if isinstance(blaster, OrthographicRayBlaster):
-                    ray_dir = blaster.forward
-                    orthographic = True
-                else:
-                    ray_dir = blaster.directions
-                    orthographic = False
-                self._accumulate_hits(component_fd, counts["primID"],
-                                      counts["geomID"], ray_dir,
-                                      blaster.ray_intensity,
-                                      blaster.diffuse_intensity,
-                                      orthographic=orthographic,
-                                      any_direction=any_direction)
-        return component_fd
-
-    def _calc_incident_power(self, ray_dir, norm, area, any_direction=True):
-        cosaoi = (
-            np.dot(norm, -ray_dir)
-            / (2.0 * area * np.linalg.norm(ray_dir))
+        accumulators = {
+            'flux_density': True,
+            'count': False,
+            'tfar': False,
+        }
+        out = self.compute_count(
+            light_sources, accumulators=accumulators, **kwargs
         )
-        out = cosaoi / area
-        if any_direction:
-            out = np.abs(out)
-        else:
-            out[out < 0] = 0
-        return out
-
-    def _accumulate_hits(self, component_fd, primID, geomID,
-                         ray_dir, ray_intensity, diffuse_intensity,
-                         orthographic=False, any_direction=True):
-        any_hits = (primID >= 0)
-        for ci, component in enumerate(self.components):
-            norms = component.normals
-            areas = component.areas
-            idx_hits = np.logical_and(geomID == ci, any_hits)
-            if orthographic:
-                component_counts = np.bincount(
-                    primID[idx_hits], minlength=component.triangles.shape[0])
-                component_fd[ci][:] += np.array(
-                    component_counts * ray_intensity
-                    * self._calc_incident_power(
-                        ray_dir, norms, areas,
-                        any_direction=any_direction), "f4")
-            else:
-                if not isinstance(ray_intensity, np.ndarray):
-                    ray_intensity = ray_intensity * np.ones(primID.shape)
-                # TODO: This loop can be removed if AOI is calculated
-                # for each intersection by embree (or callback)
-                for idx_ray in np.where(idx_hits)[0]:
-                    idx_scene = primID[idx_ray]
-                    component_fd[ci][idx_scene] += (
-                        ray_intensity[idx_ray]
-                        * self._calc_incident_power(
-                            ray_dir[idx_ray, :],
-                            norms[idx_scene], areas[idx_scene],
-                            any_direction=any_direction))
-            # Diffuse
-            # TODO: This assumes diffuse light comes from everywhere
-            if diffuse_intensity > 0.0:
-                tilt = sun_calc.stable_arccos(
-                    np.dot(norms, self.up)
-                    / (2.0 * areas * np.linalg.norm(self.up)))
-                component_diffuse = pvlib.irradiance.isotropic(
-                    np.degrees(tilt), diffuse_intensity)
-                component_fd[ci] += component_diffuse
-            # assert not any(component_fd[ci] == 0)
+        return out['flux_density']
 
     def _ipython_display_(self):
         # This needs to actually display, which is not the same as
