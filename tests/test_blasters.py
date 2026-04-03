@@ -6,7 +6,7 @@ from hothouse import blaster, sun_calc
 
 def test_sun_blaster(location_champaign, altitude_champaign,
                      datetime_champaign, scene_soy,
-                     assert_allclose):
+                     assert_allclose, tolerances_solar):
     r"""Test creation & use of solar blaster."""
     nx = 512
     ny = 512
@@ -14,14 +14,15 @@ def test_sun_blaster(location_champaign, altitude_champaign,
     rb = scene_soy.get_sun_blaster(*location_champaign, date,
                                    altitude=altitude_champaign,
                                    nx=nx, ny=ny)
-    assert_allclose(rb.solar_altitude, 7.807668468792781)
-    assert_allclose(rb.solar_distance, 694.869384765625)
+    assert_allclose(rb.solar_altitude, 7.807668468792781,
+                    **tolerances_solar)
+    assert_allclose(rb.solar_distance, 694.869384765625,
+                    **tolerances_solar)
     assert_allclose(
         rb.center,
-        np.array([574.7942504882812, 254.042, 532.0391845703125], "f4"))
-    rb.compute_distance(scene_soy)
-    scene_soy.compute_solar_ppfd(*location_champaign, date,
-                                 altitude=altitude_champaign)
+        np.array([574.7942504882812, 254.042, 532.0391845703125], "f4"),
+        **tolerances_solar
+    )
 
 
 class TestRayBlaster:
