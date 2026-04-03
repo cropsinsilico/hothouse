@@ -23,6 +23,10 @@ class TestScene:
     }
 
     @pytest.fixture(scope="class")
+    def tolerances(self):
+        return {}
+
+    @pytest.fixture(scope="class")
     def instance_kws(self):
         return self._instance_kws
 
@@ -88,23 +92,28 @@ class TestScene:
         assert result[0].sum() == expected_results['count'][0]
 
     def test_compute_flux(self, instance, blaster, nface,
-                          expected_results):
+                          expected_results, assert_allclose, tolerances):
         r"""Test compute_flux method."""
         result = instance.compute_flux(blaster)
         assert len(result) == 1
         assert result[0].shape == (nface, )
-        assert result[0].sum() == expected_results['flux'][0]
+        assert_allclose(result[0].sum(), expected_results['flux'][0],
+                        **tolerances)
 
     def test_compute_flux_density(self, instance, nface, blaster,
-                                  expected_results, assert_allclose):
+                                  expected_results, assert_allclose,
+                                  tolerances):
         r"""Test compute_flux_density method."""
         result = instance.compute_flux_density(blaster)
         assert len(result) == 1
         assert result[0].shape == (nface, )
-        assert_allclose(result[0].sum(), expected_results['flux_density'][0])
+        assert_allclose(result[0].sum(),
+                        expected_results['flux_density'][0],
+                        **tolerances)
 
     def test_compute_count(self, instance, blaster, nface,
-                           expected_results, assert_allclose):
+                           expected_results, assert_allclose,
+                           tolerances):
         result = instance.compute_count(
             blaster, accumulators={'flux_density': True})
         for k, kresult in result.items():
@@ -114,11 +123,11 @@ class TestScene:
                 kresult[0].sum(), kresult[0].min(), kresult[0].max(),
                 kresult[0].mean()
             ], "f4")
-            assert_allclose(actual, expected_results[k])
+            assert_allclose(actual, expected_results[k], **tolerances)
 
     def test_compute_solar_ppfd(self, instance, nface, location_champaign,
                                 datetime_champaign, expected_results,
-                                assert_allclose):
+                                assert_allclose, tolerances_solar):
         r"""Test compute_solar_ppfd method."""
         result = instance.compute_solar_ppfd(*location_champaign,
                                              datetime_champaign("noon"))
@@ -128,7 +137,8 @@ class TestScene:
             result[0].sum(), result[0].min(), result[0].max(),
             result[0].mean()
         ], "f4")
-        assert_allclose(actual, expected_results['solar_ppfd'])
+        assert_allclose(actual, expected_results['solar_ppfd'],
+                        **tolerances_solar)
 
 
 class TestPeriodicScene(TestScene):

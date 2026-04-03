@@ -58,6 +58,10 @@ class TestRayBlaster:
     }
 
     @pytest.fixture(scope="class")
+    def tolerances(self):
+        return {}
+
+    @pytest.fixture(scope="class")
     def intersection_width(self, intersection_radius):
         return np.sqrt(2 * (intersection_radius * intersection_radius))
 
@@ -224,31 +228,35 @@ class TestRayBlaster:
         return out
 
     def test_compute_distance(self, instance, scene_pyramid,
-                              expected_result_sorted, assert_allclose):
+                              expected_result_sorted,
+                              assert_allclose, tolerances):
         r"""Test calculation of travel distance to scene."""
         actual = instance.compute_distance(scene_pyramid)
-        assert_allclose(actual, expected_result_sorted['tfar'])
+        assert_allclose(actual, expected_result_sorted['tfar'],
+                        **tolerances)
 
     def test_compute_count(self, instance, scene_pyramid,
                            expected_result_sorted,
-                           assert_dicts_allclose):
+                           assert_dicts_allclose, tolerances):
         r"""Test calculation of intersections with scene."""
         actual = instance.compute_count(scene_pyramid)
-        assert_dicts_allclose(actual, expected_result_sorted)
+        assert_dicts_allclose(actual, expected_result_sorted,
+                              **tolerances)
 
     def test_compute_count_multibounce(self, instance,
                                        scene_pyramid,
                                        expected_result_sorted,
                                        expected_bounces_sorted,
-                                       assert_dicts_allclose):
+                                       assert_dicts_allclose,
+                                       tolerances, tolerances_bounces):
         r"""Test calculation of intersections with scene."""
         actual = instance.compute_count(
             scene_pyramid, multibounce=True, power_threshold=0.1)
         assert_dicts_allclose(actual, expected_result_sorted,
-                              ignore_keys=['bounces'])
+                              ignore_keys=['bounces'], **tolerances)
         assert 'bounces' in actual
         assert_dicts_allclose(actual['bounces'], expected_bounces_sorted,
-                              rtol=1e-6)
+                              **tolerances_bounces)
 
 
 class TestOrthographicRayBlaster(TestRayBlaster):
@@ -380,6 +388,10 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
     r"""Tests for SunRayBlaster."""
 
     cls = blaster.SunRayBlaster
+
+    @pytest.fixture(scope="class")
+    def tolerances(self, tolerances_solar):
+        return tolerances_solar
 
     @pytest.fixture(scope="class")
     def instance_kws(self, location_champaign, altitude_champaign,

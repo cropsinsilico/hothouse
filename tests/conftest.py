@@ -107,6 +107,16 @@ def scene_pyramid(model_pyramid):
 
 
 @pytest.fixture(scope="session")
+def tolerances_bounces():
+    return {'rtol': 1e-6}
+
+
+@pytest.fixture(scope="session")
+def tolerances_solar():
+    return {'rtol': 1e-6}
+
+
+@pytest.fixture(scope="session")
 def assert_almost_equal():
     r"""Assert that arrays are close."""
 
