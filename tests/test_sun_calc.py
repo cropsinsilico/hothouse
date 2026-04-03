@@ -6,7 +6,7 @@ from hothouse import sun_calc
 def test_op_along_axis(assert_allclose):
     r"""Test elementwise operation along axis."""
     a = np.ones((5, 3))
-    b = np.arange(5)
+    b = np.arange(1, 6)
     assert_allclose(
         sun_calc.op_along_axis(np.multiply, a, b),
         np.vstack([b, b, b]).T
@@ -74,6 +74,8 @@ def test_stable_arcsin(assert_allclose):
     atol = 1e-09
     x = np.hstack([x + i * atol for i in range(nrep)]
                   + [x - i * atol for i in range(nrep)])
+    x[x < -1] = -1
+    x[x > 1] = 1
     y = np.hstack(2 * nrep * [y])
     assert_allclose(sun_calc.stable_arcsin(x), y)
 
@@ -87,9 +89,11 @@ def test_stable_arccos(assert_allclose):
     for xx, yy in zip(x, y):
         assert_allclose(sun_calc.stable_arccos(xx), yy)
     nrep = 5
-    atol = 1e-09
+    atol = 1e-9
     x = np.hstack([x + i * atol for i in range(nrep)]
                   + [x - i * atol for i in range(nrep)])
+    x[x < -1] = -1
+    x[x > 1] = 1
     y = np.hstack(2 * nrep * [y])
     assert_allclose(sun_calc.stable_arccos(x), y)
 

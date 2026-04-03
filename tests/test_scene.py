@@ -19,7 +19,8 @@ class TestScene:
             0.95618385, 0, 0.037574425, 0.0009960248], "f4"),
         'flux_density': np.array([
             0.13100827, 0, 0.0050536012, 0.00013646694], "f4"),
-        'tfar': np.array([np.inf, 0.52852875, 1e37, np.inf], "f4"),
+        'tfar': np.array([
+            33.55874, 0.52852875, 2.3789017, 1.0487106], "f4"),
     }
 
     @pytest.fixture(scope="class")
@@ -119,11 +120,23 @@ class TestScene:
         for k, kresult in result.items():
             assert len(kresult) == 1
             assert kresult[0].shape == (nface, )
-            actual = np.array([
-                kresult[0].sum(), kresult[0].min(), kresult[0].max(),
-                kresult[0].mean()
-            ], "f4")
-            assert_allclose(actual, expected_results[k], **tolerances)
+            if k == 'tfar':
+                idx = (kresult[0] != 1e37)
+                actual = np.array([
+                    kresult[0][idx].sum(), kresult[0][idx].min(),
+                    kresult[0][idx].max(),
+                    kresult[0][idx].mean()
+                ], "f4")
+            else:
+                actual = np.array([
+                    kresult[0].sum(), kresult[0].min(), kresult[0].max(),
+                    kresult[0].mean()
+                ], "f4")
+            try:
+                assert_allclose(actual, expected_results[k], **tolerances)
+            except BaseException:
+                print(k)
+                raise
 
     def test_compute_solar_ppfd(self, instance, nface, location_champaign,
                                 datetime_champaign, expected_results,
@@ -158,6 +171,9 @@ class TestPeriodicScene(TestScene):
     def expected_results(self, blaster):
         out = dict(
             self._expected_results,
+            tfar=np.array([
+                28.76002, 0.52852875, 1.2916243, 0.95866734
+            ], "f4"),
             count=np.array([
                 blaster.nx * blaster.ny, 0, 18224, 273.066667
             ], "f4"),

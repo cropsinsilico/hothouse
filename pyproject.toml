@@ -99,9 +99,12 @@ norecursedirs = [
 ]
 testpaths = "tests" 
 filterwarnings = [
-  # Warnings from traittypes import
-  "ignore:((.|\n)*)Sentinel is not a public part of the traitlets API((.|\n)*)",
-  "ignore:((.|\n)*)was set from the constructor((.\n)*)",
+  "error",
+  # Deprecation warnings caused by import of dependencies
+  "ignore::DeprecationWarning:importlib.*",
+  "ignore:((.|\n)*)Sentinel is not a public part of the traitlets API((.|\n)*):DeprecationWarning:traitlets.*",
+  # "ignore:((.|\n)*)was set from the constructor((.|\n)*):DeprecationWarning:traitlets.*",
+  "ignore:((.|\n)*)was set from the constructor((.|\n)*):DeprecationWarning",
 ]
 
 [tool.coverage.run]
