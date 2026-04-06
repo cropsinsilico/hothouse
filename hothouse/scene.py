@@ -809,5 +809,5 @@ class PeriodicScene(Scene):
         for shift in self.periodic_shifts:
             self._buffer_meshes.append(
                 TriangleMesh(self.embree_scene,
-                             component.triangles + shift)
+                             (component.triangles + shift).astype("f4"))
             )
