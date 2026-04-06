@@ -44,11 +44,11 @@ class MultibounceCallback(traitlets.HasTraits):
     # TODO: Multispectral bounces
 
     origins = traittypes.Array().valid(
-        check_shape(None, 3), check_dtype("f4"))
+        check_shape(None, 3), check_dtype("f8"))
     directions = traittypes.Array().valid(
-        check_shape(None, 3), check_dtype("f4"))
+        check_shape(None, 3), check_dtype("f8"))
     hits = traitlets.Dict()
-    power = traittypes.Array().valid(check_dtype("f4"))
+    power = traittypes.Array().valid(check_dtype("f8"))
     power_threshold = traitlets.CFloat(0.001)
     original_ray = traittypes.Array().valid(check_dtype("i4"))
     transmittance = traitlets.List()
@@ -56,7 +56,7 @@ class MultibounceCallback(traitlets.HasTraits):
 
     @traitlets.default("power")
     def _default_power(self):
-        return np.ones((self.origins.shape[0], ), "f4")
+        return np.ones((self.origins.shape[0], ), "f8")
 
     @traitlets.default("original_ray")
     def _default_original_ray(self):
@@ -91,7 +91,7 @@ class MultibounceCallback(traitlets.HasTraits):
         # Rotate inverse of original direction 180 deg around surface
         # normal to get new direction
         return sun_calc.rotate_u(-self.directions[self.idx], np.pi,
-                                 self.hits['Ng'][self.idx]).astype("f4")
+                                 self.hits['Ng'][self.idx]).astype("f8")
 
     @cached_property
     def transmitted_directions(self):
@@ -256,10 +256,10 @@ class RayBlaster(traitlets.HasTraits):
 
     """
     origins = traittypes.Array().valid(
-        check_shape(None, 3), check_dtype("f4"))
+        check_shape(None, 3), check_dtype("f8"))
     directions = traittypes.Array().valid(
-        check_shape(None, 3), check_dtype("f4"))
-    ray_intensity = traittypes.Array().valid(check_dtype("f4"))
+        check_shape(None, 3), check_dtype("f8"))
+    ray_intensity = traittypes.Array().valid(check_dtype("f8"))
     intensity = traitlets.CFloat()
     diffuse_intensity = traitlets.CFloat(0.0)
 
@@ -271,7 +271,7 @@ class RayBlaster(traitlets.HasTraits):
 
     @traitlets.default("ray_intensity")
     def _default_ray_intensity(self):
-        out = np.empty((self.origins.shape[0], ), "f4")
+        out = np.empty((self.origins.shape[0], ), "f8")
         out.fill(self.intensity / len(out))
         return out
 
@@ -317,9 +317,11 @@ class RayBlaster(traitlets.HasTraits):
         #         scene.reflectance_periodic)
         # else:
         #     callback_handler = None
+        origins_f4 = origins.astype("f4")
+        directions_f4 = directions.astype("f4")
         output = scene.embree_scene.run(
-            origins,
-            directions,
+            origins_f4,
+            directions_f4,
             dists=dists,
             query=query_type._value_,
             output=verbose_output,
@@ -428,7 +430,7 @@ class RayBlaster(traitlets.HasTraits):
 
         """
         fd_scene = scene.compute_flux_density(light_sources, **kwargs)
-        out = np.zeros(self.nx * self.ny, "f4")
+        out = np.zeros(self.nx * self.ny, "f8")
         camera_hits = self.compute_count(scene)
         for ci, component in enumerate(scene.components):
             idx_ci = np.where(camera_hits["geomID"] == ci)[0]
@@ -463,17 +465,17 @@ class OrthographicRayBlaster(RayBlaster):
 
     """
 
-    center = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
-    forward = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
-    up = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
-    east = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
+    center = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
+    forward = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
+    up = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
+    east = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
     width = traitlets.CFloat(1.0)
     height = traitlets.CFloat(1.0)
     nx = traitlets.CInt(512)
     ny = traitlets.CInt(512)
     period = traittypes.Array(
-        np.zeros((3,), "f4")
-    ).valid(check_dtype("f4"), check_shape(3))
+        np.zeros((3,), "f8")
+    ).valid(check_dtype("f8"), check_shape(3))
     intensity = traitlets.CFloat()
     intensity_density = traitlets.CFloat()
 
@@ -507,14 +509,14 @@ class OrthographicRayBlaster(RayBlaster):
 
     @traitlets.default("directions")
     def _default_directions(self):
-        self._directions = np.zeros((self.nx, self.ny, 3), dtype="f4")
+        self._directions = np.zeros((self.nx, self.ny, 3), dtype="f8")
         self._directions[:] = self.forward[None, None, :]
         return self._directions.view().reshape((self.nx * self.ny, 3))
 
     @traitlets.default("origins")
     def _default_origins(self):
         # here origin is not the center, but the bottom left
-        self._origins = np.zeros((self.nx, self.ny, 3), dtype="f4")
+        self._origins = np.zeros((self.nx, self.ny, 3), dtype="f8")
         offset_x, offset_y = np.mgrid[
             (-self.width / 2):(self.width / 2):(self.nx * 1j),
             (-self.height / 2):(self.height / 2):(self.ny * 1j),
@@ -607,16 +609,16 @@ class SunRayBlaster(OrthographicRayBlaster):
     longitude = traitlets.Float()
     date = traitlets.Instance(klass=datetime.datetime)
 
-    ground = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
-    zenith = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
-    north = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
+    ground = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
+    zenith = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
+    north = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
 
     solar_altitude = traitlets.CFloat()
     solar_azimuth = traitlets.CFloat()
     solar_distance = traitlets.CFloat()
     _solpos_info = traittypes.DataFrame()
     scene_limits = traittypes.Array(None, allow_none=True).valid(
-        check_shape(None, 3), check_dtype("f4"))
+        check_shape(None, 3), check_dtype("f8"))
 
     altitude = traitlets.Float()
     pressure = traitlets.Float()
@@ -754,7 +756,7 @@ class SunRayBlaster(OrthographicRayBlaster):
         """
         instance = cls(latitude=latitude, longitude=longitude,
                        date=date, zenith=(10 * up),
-                       ground=np.zeros((3,), "f4"), north=north)
+                       ground=np.zeros((3,), "f8"), north=north)
         return instance.forward
 
     @property
@@ -785,7 +787,7 @@ class SunRayBlaster(OrthographicRayBlaster):
                               self.north),
             np.radians(90 - self.solar_azimuth),
             self.zenith_direction,
-        ).astype("f4") + origin
+        ).astype("f8") + origin
 
     @cached_property
     def limits_east(self):
@@ -831,10 +833,10 @@ class ProjectionRayBlaster(RayBlaster):
     """
     fov_width = traitlets.CFloat(90.0)
     fov_height = traitlets.CFloat(90.0)
-    center = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
-    forward = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
-    up = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
-    east = traittypes.Array().valid(check_dtype("f4"), check_shape(3))
+    center = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
+    forward = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
+    up = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
+    east = traittypes.Array().valid(check_dtype("f8"), check_shape(3))
     width = traitlets.CFloat(1.0)
     height = traitlets.CFloat(1.0)
     nx = traitlets.CInt(512)
@@ -848,13 +850,13 @@ class ProjectionRayBlaster(RayBlaster):
     def _default_directions(self):
         self._directions = self.origins - self.camera_origin
         self._directions = sun_calc.norm_along_axis(
-            self._directions, 1).astype("f4")
+            self._directions, 1).astype("f8")
         return self._directions.view()
 
     @traitlets.default("origins")
     def _default_origins(self):
         # here origin is not the center, but the bottom left
-        self._origins = np.zeros((self.nx, self.ny, 3), dtype="f4")
+        self._origins = np.zeros((self.nx, self.ny, 3), dtype="f8")
         offset_x, offset_y = np.mgrid[
             (-self.width / 2):(self.width / 2):(self.nx * 1j),
             (-self.height / 2):(self.height / 2):(self.ny * 1j),
@@ -908,7 +910,7 @@ class SphericalRayBlaster(ProjectionRayBlaster):
 
     @traitlets.default("directions")
     def _default_directions(self):
-        self._directions = np.zeros((self.nx * self.ny, 3), dtype="f4")
+        self._directions = np.zeros((self.nx * self.ny, 3), dtype="f8")
         self._directions[:] = self.forward[None, :]
         fov_width = self.fov_width
         fov_height = self.fov_height
@@ -925,16 +927,16 @@ class SphericalRayBlaster(ProjectionRayBlaster):
         self._directions = sun_calc.norm_along_axis(self._directions, 1)
         if not self.dont_include_center:
             self._directions = np.vstack([self.forward, self._directions])
-        self._directions = self._directions.astype("f4")
+        self._directions = self._directions.astype("f8")
         return self._directions.view()
 
     @traitlets.default("origins")
     def _default_origins(self):
         # here origin is not the center, but the bottom left
         if self.dont_include_center:
-            self._origins = np.zeros((self.nx, self.ny, 3), dtype="f4")
+            self._origins = np.zeros((self.nx, self.ny, 3), dtype="f8")
             self._origins[:] = self.center[None, None, :]
             return self._origins.view().reshape((self.nx * self.ny, 3))
-        self._origins = np.zeros((self.nx * self.ny + 1, 3), dtype="f4")
+        self._origins = np.zeros((self.nx * self.ny + 1, 3), dtype="f8")
         self._origins[:] = self.center[None, None, :]
         return self._origins.view()

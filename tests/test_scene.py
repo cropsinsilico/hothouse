@@ -9,16 +9,16 @@ class TestScene:
 
     cls = scene.Scene
     _instance_kws = {
-        'ground': np.array([0.0, 0.0, -19.73708], "f4"),
+        'ground': np.array([0.0, 0.0, -19.73708], "f8"),
     }
     _expected_results = {
         'solar_ppfd': np.array([
-            3.0774675e5, 1.2462395, 1.5996583e3, 3.2056952e2
-        ], "f4"),
+            3.0774675e5, 1.246241953, 1.5996583e3, 3.2056952e2
+        ], "f8"),
         'flux': np.array([
-            0.95618385, 0, 0.037574425, 0.0009960248], "f4"),
+            0.95618385, 0, 0.037574425, 0.0009960248], "f8"),
         'flux_density': np.array([
-            0.13100827, 0, 0.0050536012, 0.00013646694], "f4"),
+            0.13100827, 0, 0.0050536018, 0.00013646694], "f8"),
         'tfar': np.array([
             33.55874, 0.52852875, 2.3789017, 1.0487106], "f4"),
     }
@@ -43,7 +43,7 @@ class TestScene:
             self._expected_results,
             count=np.array([
                 blaster.nx * blaster.ny, 0, 9945, 273.066667
-            ], "f4"),
+            ], "f8"),
         )
         return out
 
@@ -81,7 +81,7 @@ class TestScene:
                 [-19.73708, 19.73708, 19.73708],
                 [19.73708, 19.73708, -19.73708],
                 [19.73708, 19.73708, 19.73708]
-            ], "f4"),
+            ], "f8"),
         )
 
     def test_compute_hit_count(self, instance, blaster, nface,
@@ -131,7 +131,7 @@ class TestScene:
                 actual = np.array([
                     kresult[0].sum(), kresult[0].min(), kresult[0].max(),
                     kresult[0].mean()
-                ], "f4")
+                ], "f8")
             try:
                 assert_allclose(actual, expected_results[k], **tolerances)
             except BaseException:
@@ -149,7 +149,7 @@ class TestScene:
         actual = np.array([
             result[0].sum(), result[0].min(), result[0].max(),
             result[0].mean()
-        ], "f4")
+        ], "f8")
         assert_allclose(actual, expected_results['solar_ppfd'],
                         **tolerances_solar)
 
@@ -162,7 +162,7 @@ class TestPeriodicScene(TestScene):
     @pytest.fixture(scope="class")
     def instance_kws(self):
         out = copy.deepcopy(self._instance_kws)
-        out['period'] = np.array([10.0, 10.0, 0.0], "f4")
+        out['period'] = np.array([10.0, 10.0, 0.0], "f8")
         out['count'] = np.array([1, 1, 0], "i4")
         out['buffer_as_primary'] = True
         return out
@@ -176,16 +176,16 @@ class TestPeriodicScene(TestScene):
             ], "f4"),
             count=np.array([
                 blaster.nx * blaster.ny, 0, 18224, 273.066667
-            ], "f4"),
+            ], "f8"),
             flux=np.array([
                 0.9650246, 0, 0.068854332, 0.001005234
-            ], "f4"),
+            ], "f8"),
             flux_density=np.array([
                 0.13121204, 0, 0.0093794512, 0.00013667921
-            ], "f4"),
+            ], "f8"),
             solar_ppfd=np.array([
-                4.9688369e5, 1.2462395, 1.1813491e4, 5.1758716e2
-            ], "f4"),
+                4.9688369e5, 1.246241953, 1.1813491e4, 5.1758716e2
+            ], "f8"),
         )
         return out
 

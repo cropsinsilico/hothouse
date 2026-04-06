@@ -83,7 +83,7 @@ class CastAccumulator(traitlets.HasTraits):
 
     @traitlets.default("dtype")
     def _default_dtype(self):
-        return self._default_dtypes.get(self.name, np.dtype("f4"))
+        return self._default_dtypes.get(self.name, np.dtype("f8"))
 
     @traitlets.default("value")
     def _default_value(self):
@@ -178,12 +178,12 @@ class Scene(traitlets.HasTraits):
 
     """
 
-    ground = traittypes.Array(np.array([0.0, 0.0, 0.0], "f4")).valid(
-        check_dtype("f4"), check_shape(3))
-    up = traittypes.Array(np.array([0.0, 0.0, 1.0], "f4")).valid(
-        check_dtype("f4"), check_shape(3))
-    north = traittypes.Array(np.array([0.0, 1.0, 0.0], "f4")).valid(
-        check_dtype("f4"), check_shape(3))
+    ground = traittypes.Array(np.array([0.0, 0.0, 0.0], "f8")).valid(
+        check_dtype("f8"), check_shape(3))
+    up = traittypes.Array(np.array([0.0, 0.0, 1.0], "f8")).valid(
+        check_dtype("f8"), check_shape(3))
+    north = traittypes.Array(np.array([0.0, 1.0, 0.0], "f8")).valid(
+        check_dtype("f8"), check_shape(3))
     components = traitlets.List(trait=traitlets.Instance(Model))
     meshes = traitlets.List(trait=traitlets.Instance(TriangleMesh))
     embree_scene = traitlets.Instance(EmbreeScene, args=tuple())
@@ -214,7 +214,7 @@ class Scene(traitlets.HasTraits):
         # Force traitlet update
         self.components = self.components + [component]
         self.meshes.append(
-            TriangleMesh(self.embree_scene, component.triangles))
+            TriangleMesh(self.embree_scene, component.triangles_f4))
 
     def compute_count(self, blasters, accumulators=None,
                       any_direction=True, **kwargs):
@@ -650,11 +650,11 @@ class PeriodicScene(Scene):
     """
 
     period = traittypes.Array(
-        np.zeros((3,), "f4")
-    ).valid(check_dtype("f4"), check_shape(3))
+        np.zeros((3,), "f8")
+    ).valid(check_dtype("f8"), check_shape(3))
     direction = traittypes.Array(np.array([
         [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]
-    ], "f4")).valid(check_dtype("f4"), check_shape(3, 3))
+    ], "f8")).valid(check_dtype("f8"), check_shape(3, 3))
     count = traittypes.Array(np.array([0, 0, 0], "i4")).valid(
         check_dtype("i4"), check_shape(3))
     dont_reflect = traitlets.Bool(False)

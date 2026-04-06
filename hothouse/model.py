@@ -50,26 +50,26 @@ class Model(traitlets.HasTraits):
 
     """
     vertices = traittypes.Array(None, allow_none=True).valid(
-        check_shape(None, 3), check_dtype("f4")
+        check_shape(None, 3), check_dtype("f8")
     )
     indices = traittypes.Array(None, allow_none=True).valid(
         check_shape(None, 3), check_dtype("i4")
     )
     triangles = traittypes.Array(None, allow_none=True).valid(
-        check_shape(None, 3, 3), check_dtype("f4")
+        check_shape(None, 3, 3), check_dtype("f8")
     )
     attributes = traittypes.Array(None, allow_none=True)
     normals = traittypes.Array(None, allow_none=True).valid(
-        check_shape(None, 3), check_dtype("f4")
+        check_shape(None, 3), check_dtype("f8")
     )
     vertex_normals = traittypes.Array(None, allow_none=True).valid(
-        check_shape(None, 3, 3), check_dtype("f4")
+        check_shape(None, 3, 3), check_dtype("f8")
     )
     # TODO: Wavelength dependence?
     transmittance = traittypes.Array(None, allow_none=True).valid(
-        check_dtype("f4"))
+        check_dtype("f8"))
     reflectance = traittypes.Array(None, allow_none=True).valid(
-        check_dtype("f4"))
+        check_dtype("f8"))
 
     @traitlets.default("triangles")
     def _default_triangles(self):
@@ -79,6 +79,10 @@ class Model(traitlets.HasTraits):
                              "must be provided")
         return self.vertices[self.indices, :]
 
+    @cached_property
+    def triangles_f4(self):
+        return self.triangles.astype("f4")
+
     @traitlets.default("indices")
     def _default_indices(self):
         return np.arange(self.triangles.shape[0] * 3, dtype="i4").reshape(
@@ -87,7 +91,7 @@ class Model(traitlets.HasTraits):
     @traitlets.default("vertices")
     def _default_vertices(self):
         return self.triangles.reshape.reshape(
-            (self.triangles.shape[0], 9))
+            (self.triangles.shape[0], 9)).astype("f8")
 
     @traitlets.default("normals")
     def _default_normals(self):
@@ -125,7 +129,7 @@ class Model(traitlets.HasTraits):
         """
         import pywavefront
         obj = pywavefront.Wavefront(filename, collect_faces=True)
-        xyz_vert = np.asarray(obj.vertices, dtype='f4')
+        xyz_vert = np.asarray(obj.vertices, dtype='f8')
         xyz_faces = []
         triangles = []
         vertex_normals = []
@@ -136,7 +140,7 @@ class Model(traitlets.HasTraits):
             for material in mesh.materials:
                 if material.has_normals:
                     vertex_data = np.asarray(
-                        material.vertices, dtype='f4').reshape(
+                        material.vertices, dtype='f8').reshape(
                             (-1, 3, material.vertex_size))
                     i0 = (material.has_uvs * 2)
                     i1 = (material.has_uvs * 2
@@ -155,9 +159,9 @@ class Model(traitlets.HasTraits):
         vertex_normals = np.concatenate(vertex_normals, axis=0)
         colors = np.concatenate(colors, axis=0)
         if isinstance(transmittance, float):
-            transmittance = transmittance * np.ones(triangles.shape[0], 'f4')
+            transmittance = transmittance * np.ones(triangles.shape[0], 'f8')
         if isinstance(reflectance, float):
-            reflectance = reflectance * np.ones(triangles.shape[0], 'f4')
+            reflectance = reflectance * np.ones(triangles.shape[0], 'f8')
         out = cls(
             vertices=xyz_vert,
             indices=xyz_faces,
@@ -194,7 +198,8 @@ class Model(traitlets.HasTraits):
         for face in _ensure_triangulated(faces):
             indices = face[0]
             vert = vertices[indices]
-            triangles.append(np.array([vert["x"], vert["y"], vert["z"]]))
+            triangles.append(
+                np.array([vert["x"], vert["y"], vert["z"]], "f8"))
             xyz_faces.append(indices)
 
         xyz_vert = np.stack([vertices[ax] for ax in "xyz"], axis=-1)
@@ -208,11 +213,11 @@ class Model(traitlets.HasTraits):
             )
         triangles = np.array(triangles).swapaxes(1, 2)
         if isinstance(transmittance, float):
-            transmittance = transmittance * np.ones(triangles.shape[0], 'f4')
+            transmittance = transmittance * np.ones(triangles.shape[0], 'f8')
         if isinstance(reflectance, float):
-            reflectance = reflectance * np.ones(triangles.shape[0], 'f4')
+            reflectance = reflectance * np.ones(triangles.shape[0], 'f8')
         obj = cls(
-            vertices=xyz_vert,
+            vertices=xyz_vert.astype("f8"),
             indices=xyz_faces.astype('i4'),
             attributes=colors,
             triangles=triangles,

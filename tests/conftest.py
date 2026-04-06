@@ -75,9 +75,9 @@ def scene_soy(model_soy):
     r"""Scene containing test soy data."""
     from hothouse.scene import Scene
     s = Scene(
-        ground=np.array([0.0, 0.0, 200.0], dtype="f4"),
-        up=np.array([0.0, 0.0, 1.0], dtype="f4"),
-        north=np.array([0.0, 1.0, 0.0], dtype="f4"),
+        ground=np.array([0.0, 0.0, 200.0], dtype="f8"),
+        up=np.array([0.0, 0.0, 1.0], dtype="f8"),
+        north=np.array([0.0, 1.0, 0.0], dtype="f8"),
     )
     s.add_component(model_soy)
     return s
@@ -97,10 +97,10 @@ def scene_pyramid(model_pyramid):
     r"""Scene containing test pyramid data."""
     from hothouse.scene import Scene
     s = Scene(
-        ground=np.array([0.5, 0.5, 0.0], "f4"),
-        up=np.array([0.0, 0.0, 1.0], dtype="f4"),
+        ground=np.array([0.5, 0.5, 0.0], "f8"),
+        up=np.array([0.0, 0.0, 1.0], dtype="f8"),
         north=np.array(
-            [1.0 / np.sqrt(2.0), 1.0 / np.sqrt(2.0), 0.0], dtype="f4"),
+            [1.0 / np.sqrt(2.0), 1.0 / np.sqrt(2.0), 0.0], dtype="f8"),
     )
     s.add_component(model_pyramid)
     return s
