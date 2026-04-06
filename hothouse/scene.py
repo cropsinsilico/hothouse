@@ -186,7 +186,8 @@ class Scene(traitlets.HasTraits):
         check_dtype("f8"), check_shape(3))
     components = traitlets.List(trait=traitlets.Instance(Model))
     meshes = traitlets.List(trait=traitlets.Instance(TriangleMesh))
-    embree_scene = traitlets.Instance(EmbreeScene, args=tuple())
+    embree_scene = traitlets.Instance(EmbreeScene, args=tuple(),
+                                      kwargs=dict(robust=True))
 
     # TODO: Add surface for ground so that reflection from ground
     # is taken into account
