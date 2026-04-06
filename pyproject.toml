@@ -23,6 +23,7 @@ dependencies = [
     "embreex>=4.0.0",
     "pooch>=0.3.1",
     "plyfile>=0.7",
+    "matplotlib",
     "numpy>=1.13.0",
     "traitlets>=4.3.3",
     "traittypes>=0.2.1",
@@ -105,6 +106,10 @@ filterwarnings = [
   "ignore:((.|\n)*)Sentinel is not a public part of the traitlets API((.|\n)*):DeprecationWarning:traitlets.*",
   # "ignore:((.|\n)*)was set from the constructor((.|\n)*):DeprecationWarning:traitlets.*",
   "ignore:((.|\n)*)was set from the constructor((.|\n)*):DeprecationWarning",
+  "ignore:((.|\n)*)Animation was deleted without rendering anything((.|\n)*):UserWarning:matplotlib.*:",
+]
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
 
 [tool.coverage.run]

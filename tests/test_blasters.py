@@ -1,19 +1,21 @@
 import pytest
 import copy
 import numpy as np
+import traitlets
 from hothouse import blaster, sun_calc
 
 
 def test_sun_blaster(location_champaign, altitude_champaign,
-                     datetime_champaign, scene_soy,
+                     datetime_champaign, geometry_scene,
                      assert_allclose, tolerances_solar):
     r"""Test creation & use of solar blaster."""
     nx = 512
     ny = 512
     date = datetime_champaign("sunrise")
-    rb = scene_soy.get_sun_blaster(*location_champaign, date,
-                                   altitude=altitude_champaign,
-                                   nx=nx, ny=ny)
+    instance = geometry_scene("soy")
+    rb = instance.get_sun_blaster(*location_champaign, date,
+                                  altitude=altitude_champaign,
+                                  nx=nx, ny=ny)
     assert_allclose(rb.solar_altitude, 7.807668468792781,
                     **tolerances_solar)
     assert_allclose(rb.solar_distance, 694.869384765625,
@@ -57,6 +59,33 @@ class TestRayBlaster:
         'u': np.array([0.5, 0.5, 0.25, 0.25], "f4"),
         'v': np.array([0.25, 0.25, 0.5, 0.5], "f4"),
     }
+    _expected_attributes = {
+        'reflectance': 0.5,
+        'transmittance': 0.25,
+    }
+    _flux_density_result = 0.08896797
+
+    @pytest.fixture(scope="class")
+    def instance_type(self):
+        return "base"
+
+    @pytest.fixture(scope="class")
+    def skip_if_not_base(self, instance_type):
+        if instance_type != 'base':
+            pytest.skip("Only enabled for base instance")
+
+    @pytest.fixture(scope="class", params=["pyramid"])
+    def scene_geometry(self, request):
+        return request.param
+
+    @pytest.fixture(scope="class")
+    def scene_instance(self, scene_geometry, geometry_scene):
+        return geometry_scene(scene_geometry)
+
+    @pytest.fixture
+    def flux_density_result(self):
+        r"""float: Value for compute_flux_density test."""
+        return self._flux_density_result
 
     @pytest.fixture(scope="class")
     def tolerances(self):
@@ -87,7 +116,7 @@ class TestRayBlaster:
                                    / camera_distance))
 
     @pytest.fixture(scope="class")
-    def angle_side(self, scene_pyramid):
+    def angle_side(self, scene_instance):
         r"""Elevation angle of pyramid side from horizontal xy plane."""
         return np.degrees(sun_calc.stable_arctan(1.6 / 0.5))
 
@@ -96,8 +125,24 @@ class TestRayBlaster:
         return self._reorder_rays
 
     @pytest.fixture(scope="class")
-    def instance_kws(self):
+    def instance_kws_base(self):
         return self._instance_kws
+
+    @pytest.fixture(scope="class")
+    def instance_kws(self, instance_type, instance_kws_base):
+        if instance_type == "base":
+            return instance_kws_base
+        raise NotImplementedError(instance_type)
+
+    @pytest.fixture(scope="class")
+    def instance_base(self, instance_kws_base, reorder_rays):
+        out = self.cls(**instance_kws_base)
+        # print(out.origins)
+        # print(out.directions)
+        # if reorder_rays is not None:
+        #     print("RE-ORDER")
+        #     print(out.directions[np.argsort(reorder_rays)])
+        return out
 
     @pytest.fixture(scope="class")
     def instance(self, instance_kws, reorder_rays):
@@ -114,23 +159,48 @@ class TestRayBlaster:
         return self._expected_result
 
     @pytest.fixture(scope="class")
-    def get_bounces_empty(self, instance):
-        nray = instance.origins.shape[0]
+    def expected_attributes(self, instance):
+        out = {
+            k: np.empty(instance.nray)
+            for k in self._expected_attributes.keys()
+        }
+        for k, v in self._expected_attributes.items():
+            out[k].fill(v)
+        return out
 
-        def _get_bounces_empty(nbounce):
-            return {
-                'nbounce': np.zeros((nray, ), "i4"),
-                'Ng': np.zeros((nray, nbounce, 3), "f4"),
-                'geomID': -1 * np.ones((nray, nbounce), "i4"),
-                'primID': -1 * np.ones((nray, nbounce), "i4"),
-                'tfar': 1e37 * np.ones((nray, nbounce), "f4"),
-                'u': np.zeros((nray, nbounce), "f4"),
-                'v': np.zeros((nray, nbounce), "f4"),
-                'power': np.zeros((nray, nbounce), "f8"),
-                'ray_dir': np.zeros((nray, nbounce, 3), "f8"),
+    @pytest.fixture(scope="class")
+    def get_results_empty(self, instance):
+
+        nray = instance.nray
+
+        def _get_results_empty(nbounce=None):
+            flatten = (nbounce is None)
+            if nbounce is None:
+                nbounce = 1
+            out = {
+                'Ng': np.empty((nray, nbounce, 3), "f4"),
+                'geomID': np.empty((nray, nbounce), "i4"),
+                'primID': np.empty((nray, nbounce), "i4"),
+                'tfar': np.empty((nray, nbounce), "f4"),
+                'u': np.empty((nray, nbounce), "f4"),
+                'v': np.empty((nray, nbounce), "f4"),
             }
+            for k, v in out.items():
+                v.fill(self.cls._null_field_values.get(k, 0))
+            if flatten:
+                for k in list(out.keys()):
+                    out[k] = out[k].reshape(nray, -1)
+            else:
+                out.update(
+                    nbounce=np.zeros((nray, ), "i4"),
+                    ray_intensity=np.zeros((nray, nbounce), "f8"),
+                    ray_dir=np.zeros((nray, nbounce, 3), "f8"),
+                    transmittance=np.zeros((nray, nbounce), "f8"),
+                    reflectance=np.zeros((nray, nbounce), "f8"),
+                )
+            return out
 
-        return _get_bounces_empty
+        return _get_results_empty
 
     @pytest.fixture(scope="class")
     def expected_bounces(self, expected_bounces_base):
@@ -146,139 +216,339 @@ class TestRayBlaster:
         return (a, b, c, d, e)
 
     @pytest.fixture(scope="class")
-    def expected_bounces_base(self, get_bounces_empty, expected_result,
+    def expected_bounces_base(self, get_results_empty, expected_result,
                               instance, reorder_rays,
                               expected_bounce_factors):
-        out = get_bounces_empty(6)
+        nbounce = 3
+        out = get_results_empty(nbounce)
         if reorder_rays is None:
-            reorder_idx = np.arange(out['nbounce'].shape[0], dtype="i4")
+            reorder_idx = np.arange(instance.nray, dtype="i4")
         else:
             reorder_idx = np.argsort(reorder_rays)
-        out['nbounce'][:] = 6
+        out['nbounce'][:] = nbounce
         out['Ng'][:, 1, 2] = -1
         for i in range(expected_result['Ng'].shape[0]):
             out['Ng'][i, 2, :] = expected_result['Ng'][i]
-            out['Ng'][i, 4, 2] = expected_result['Ng'][i, 2]
-            out['Ng'][i, 4, :2] = -expected_result['Ng'][i, :2]
-        out['geomID'][:, (1, 2, 4)] = 0
+            # out['Ng'][i, 4, 2] = expected_result['Ng'][i, 2]
+            # out['Ng'][i, 4, :2] = -expected_result['Ng'][i, :2]
+        out['geomID'][:, (1, 2)] = 0
+        # out['geomID'][:, (1, 2, 4)] = 0
         out['primID'][(0, 2), 1] = 0
         out['primID'][(1, 3), 1] = 1
         out['primID'][:, 2] = expected_result['primID']
-        out['primID'][:, 4] = expected_result['primID'][::-1]
+        # out['primID'][:, 4] = expected_result['primID'][::-1]
         out['tfar'][:, (1, 2)] = 7.9989994e-01
-        out['tfar'][:, 4] = 6.0501444e-01
-        out['u'] = np.array([
-            [0.0, 0.25, 0.5, 0.0, 0.09454914182424545, 0.0],
-            [0.0, 0.5, 0.5, 0.0, 0.09454912, 0.0],
-            [0.0, 0.25, 0.25, 0.0, 0.81090176, 0.0],
-            [0.0, 0.25, 0.25, 0.0, 0.81090176, 0.0],
+        # out['tfar'][:, 4] = 6.0501444e-01
+        out['u'][:4, ...] = np.array([
+            [0.0, 0.25, 0.5],  # , 0.0, 0.09454914182424545, 0.0],
+            [0.0, 0.5, 0.5],  # , 0.0, 0.09454912, 0.0],
+            [0.0, 0.25, 0.25],  # , 0.0, 0.81090176, 0.0],
+            [0.0, 0.25, 0.25],  # , 0.0, 0.81090176, 0.0],
         ], "f4")
-        out['v'] = np.array([
-            [0.0, 0.5, 0.25, 0.0, 0.81090176, 0.0],
-            [0.0, 0.25, 0.25, 0.0, 0.81090176, 0.0],
-            [0.0, 0.25, 0.5, 0.0, 0.09454914182424545, 0.0],
-            [0.0, 0.25, 0.5, 0.0, 0.09454911947250366, 0.0],
+        out['v'][:4, ...] = np.array([
+            [0.0, 0.5, 0.25],  # , 0.0, 0.81090176, 0.0],
+            [0.0, 0.25, 0.25],  # , 0.0, 0.81090176, 0.0],
+            [0.0, 0.25, 0.5],  # , 0.0, 0.09454914182424545, 0.0],
+            [0.0, 0.25, 0.5],  # , 0.0, 0.09454911947250366, 0.0],
         ], "f4")
-        out['power'][:] = np.array([
-            0.5, 0.25, 0.125, 0.0625, 0.0625, 0.03125,
+        out['ray_intensity'][:] = np.array([
+            0.125, 0.0625, 0.03125,  # 0.0625, 0.0625, 0.03125,
         ], dtype="f8")
 
         a, b, c, d, e = expected_bounce_factors[:]
         out['ray_dir'][:, 1, :] = instance.directions[reorder_idx, ...]
-        out['ray_dir'][:, 3, :] = instance.directions[reorder_idx, ...]
+        # out['ray_dir'][:, 3, :] = instance.directions[reorder_idx, ...]
         out['ray_dir'][:, 2, 2] = -instance.directions[reorder_idx, 2]
-        out['ray_dir'][:, 5, 2] = -instance.directions[reorder_idx, 2]
+        # out['ray_dir'][:, 5, 2] = -instance.directions[reorder_idx, 2]
         out['ray_dir'][:, 0, 2] = -b
-        out['ray_dir'][:, 4, 2] = d
+        # out['ray_dir'][:, 4, 2] = d
 
-        out['ray_dir'][0, (2, 5), 0] = -c
-        out['ray_dir'][1, (2, 5), 1] = c
-        out['ray_dir'][2, (2, 5), 1] = -c
-        out['ray_dir'][3, (2, 5), 0] = c
+        out['ray_dir'][0, 2, 0] = -c
+        out['ray_dir'][1, 2, 1] = c
+        out['ray_dir'][2, 2, 1] = -c
+        out['ray_dir'][3, 2, 0] = c
+        # out['ray_dir'][0, (2, 5), 0] = -c
+        # out['ray_dir'][1, (2, 5), 1] = c
+        # out['ray_dir'][2, (2, 5), 1] = -c
+        # out['ray_dir'][3, (2, 5), 0] = c
 
         out['ray_dir'][0, 0, 0] = -a
-        out['ray_dir'][0, 4, 0] = e
+        # out['ray_dir'][0, 4, 0] = e
 
         out['ray_dir'][1, 0, 1] = a
-        out['ray_dir'][1, 4, 1] = -e
+        # out['ray_dir'][1, 4, 1] = -e
 
         out['ray_dir'][2, 0, 1] = -a
-        out['ray_dir'][2, 4, 1] = e
+        # out['ray_dir'][2, 4, 1] = e
 
         out['ray_dir'][3, 0, 0] = a
-        out['ray_dir'][3, 4, 0] = -e
+        # out['ray_dir'][3, 4, 0] = -e
+
+        idx_hits = (out['primID'] != -1)
+        out['reflectance'][idx_hits] = 0.5
+        out['transmittance'][idx_hits] = 0.25
 
         return out
 
     @pytest.fixture(scope="class")
-    def expected_result_sorted(self, expected_result, reorder_rays):
-        if reorder_rays is None:
-            return expected_result
-        out = copy.deepcopy(expected_result)
-        for k in list(out.keys()):
-            out[k] = out[k][reorder_rays, ...]
-        return out
+    def reorder_result(self, reorder_rays):
+
+        def _reorder_result(result):
+            if reorder_rays is None:
+                return result
+            out = copy.deepcopy(result)
+            for k in list(out.keys()):
+                out[k] = out[k][reorder_rays, ...]
+            return out
+
+        return _reorder_result
 
     @pytest.fixture(scope="class")
-    def expected_bounces_sorted(self, expected_bounces, reorder_rays):
-        if reorder_rays is None:
-            return expected_bounces
-        out = copy.deepcopy(expected_bounces)
-        for k in list(out.keys()):
-            out[k] = out[k][reorder_rays, ...]
-        return out
+    def expected_result_sorted(self, reorder_result, expected_result):
+        return reorder_result(expected_result)
 
-    def test_compute_distance(self, instance, scene_pyramid,
+    @pytest.fixture(scope="class")
+    def expected_attributes_sorted(self, reorder_result,
+                                   expected_attributes):
+        return reorder_result(expected_attributes)
+
+    @pytest.fixture(scope="class")
+    def expected_bounces_sorted(self, reorder_result, expected_bounces):
+        return reorder_result(expected_bounces)
+
+    def test_attributes(self, instance, assert_allclose):
+        r"""Test attributes."""
+        assert_allclose(instance.intensity, 1.0)
+
+    def test_missing_intensity(self, instance_kws_base, assert_allclose,
+                               skip_if_not_base):
+        r"""Check alternate method of calculating default values."""
+        if 'origins' in instance_kws_base:
+            N = instance_kws_base['origins'].shape[0]
+        else:
+            N = instance_kws_base['nx'] * instance_kws_base['ny']
+        x = self.cls(
+            ray_intensity=np.ones((N, ), "f8"),
+            **instance_kws_base
+        )
+        assert_allclose(x.intensity, N)
+        assert_allclose(x.nray, N)
+
+    def test_compute_distance(self, instance, scene_instance,
                               expected_result_sorted,
                               assert_allclose, tolerances):
         r"""Test calculation of travel distance to scene."""
-        actual = instance.compute_distance(scene_pyramid)
+        actual = instance.compute_distance(scene_instance)
         assert_allclose(actual, expected_result_sorted['tfar'],
                         **tolerances)
 
-    def test_compute_count(self, instance, scene_pyramid,
-                           expected_result_sorted,
-                           assert_dicts_allclose, tolerances):
-        r"""Test calculation of intersections with scene."""
-        actual = instance.compute_count(scene_pyramid)
-        assert_dicts_allclose(actual, expected_result_sorted,
-                              **tolerances)
+    def test_compute_occluded(self, instance, scene_instance,
+                              expected_result_sorted,
+                              assert_allclose):
+        r"""Test calculation of occluded rays."""
+        actual = instance.compute_occluded(scene_instance)
+        expected = -1 * np.ones(instance.nray, "i4")
+        expected[expected_result_sorted['primID'] != -1] = 0
+        assert_allclose(actual, expected)
 
-    def test_compute_count_multibounce(self, instance,
-                                       scene_pyramid,
+    def test_compute_intersect(self, instance, scene_instance,
+                               expected_result_sorted,
+                               assert_allclose):
+        r"""Test calculation of rays intersection."""
+        actual = instance.compute_intersect(scene_instance)
+        assert_allclose(actual, expected_result_sorted['primID'])
+
+    @pytest.mark.parametrize("include_attributes", [
+        False,
+        True,
+        ['dummy'],
+    ])
+    def test_compute_count(self, include_attributes,
+                           instance, scene_instance,
+                           expected_result_sorted,
+                           assert_nested_allclose, tolerances):
+        r"""Test calculation of intersections with scene."""
+        actual = instance.compute_count(
+            scene_instance, include_attributes=include_attributes,
+        )
+        if include_attributes is True:
+            extra_attributes = ['reflectance', 'transmittance']
+        elif isinstance(include_attributes, list):
+            extra_attributes = include_attributes
+        else:
+            extra_attributes = []
+        assert_nested_allclose(
+            actual, expected_result_sorted,
+            ignore_keys=extra_attributes,
+            **tolerances
+        )
+        if include_attributes:
+            return
+        bounce = instance.bounce(
+            actual, ray_intensity_threshold_abs=(
+                0.1 * instance.ray_intensity[0]
+            ),
+        )
+        assert_nested_allclose(bounce.ray_intensity_threshold_rel, 0.1)
+        bounce.ray_intensity_threshold_rel = 0.5
+        assert_nested_allclose(bounce.ray_intensity_threshold_abs,
+                               0.5 * instance.ray_intensity[0])
+        bounce = instance.bounce(actual)
+        assert bounce.ray_intensity_threshold_rel == 0.001
+
+    @pytest.mark.parametrize("include_attributes", [
+        False,
+        True,
+        ['dummy'],
+    ])
+    def test_compute_count_multibounce(self, include_attributes,
+                                       instance, scene_instance,
                                        expected_result_sorted,
                                        expected_bounces_sorted,
-                                       assert_dicts_allclose,
+                                       expected_attributes_sorted,
+                                       assert_nested_allclose,
                                        tolerances, tolerances_bounces):
         r"""Test calculation of intersections with scene."""
         actual = instance.compute_count(
-            scene_pyramid, multibounce=True, power_threshold=0.1)
-        assert_dicts_allclose(actual, expected_result_sorted,
-                              ignore_keys=['bounces'], **tolerances)
+            scene_instance, multibounce=True,
+            ray_intensity_threshold_rel=0.1,
+            include_attributes=include_attributes,
+        )
+        extra_attributes = []
+        expected_attributes = expected_attributes_sorted.copy()
+        if isinstance(include_attributes, list):
+            extra_attributes = include_attributes
+            for k in include_attributes:
+                if k in expected_attributes:
+                    continue
+                expected_attributes[k] = np.zeros(instance.nray, "f8")
+        attributes = (
+            list(expected_attributes_sorted.keys())
+            + extra_attributes
+        )
+        assert_nested_allclose(
+            actual, expected_result_sorted,
+            ignore_keys=['bounces'] + attributes,
+            **tolerances
+        )
+        assert_nested_allclose(
+            actual, expected_attributes, only_keys=attributes,
+            **tolerances
+        )
         assert 'bounces' in actual
-        assert_dicts_allclose(actual['bounces'], expected_bounces_sorted,
-                              **tolerances_bounces)
+        assert_nested_allclose(
+            actual['bounces'], expected_bounces_sorted,
+            ignore_keys=extra_attributes,
+            **tolerances_bounces
+        )
+        for k in extra_attributes:
+            assert_nested_allclose(
+                actual['bounces'][k],
+                np.zeros(actual['bounces']['transmittance'].shape, "f8"),
+            )
+
+    def test_compute_count_attributes(self, instance, scene_instance,
+                                      expected_result_sorted,
+                                      expected_attributes_sorted,
+                                      assert_nested_allclose, tolerances):
+        actual = instance.compute_count(scene_instance,
+                                        include_attributes=True)
+        assert_nested_allclose(
+            actual, expected_result_sorted,
+            ignore_keys=list(expected_attributes_sorted.keys()),
+            **tolerances
+        )
+        assert_nested_allclose(
+            actual, expected_attributes_sorted,
+            only_keys=list(expected_attributes_sorted.keys()),
+            **tolerances
+        )
+
+    def test_compute_flux_density(self, instance, scene_instance,
+                                  assert_nested_allclose,
+                                  expected_result_sorted,
+                                  tolerances, flux_density_result):
+        r"""Test compute_flux_density."""
+        actual = instance.compute_flux_density(scene_instance, instance)
+        if isinstance(flux_density_result, np.ndarray):
+            expected = flux_density_result
+        else:
+            expected = np.empty((instance.nray, ), dtype="f8")
+            expected.fill(flux_density_result)
+        assert_nested_allclose(actual, expected, **tolerances)
 
 
+@pytest.mark.parametrize("instance_type", ["base", "periodic"],
+                         scope="class")
 class TestOrthographicRayBlaster(TestRayBlaster):
-    r"""Tests for RayBlaster class."""
+    r"""Tests for OrthographicRayBlaster class."""
 
     cls = blaster.OrthographicRayBlaster
     _instance_kws = dict(
         nx=2, ny=2,
     )
+    instance_type = None
 
     @pytest.fixture(scope="class")
-    def instance_kws(self, scene_pyramid, intersection_width):
+    def instance_kws_base(self, scene_instance, intersection_width):
         out = copy.deepcopy(self._instance_kws)
         out.update(
             width=intersection_width,
             height=intersection_width,
-            forward=-scene_pyramid.up,
-            center=(scene_pyramid.ground + 2.0 * scene_pyramid.up),
-            up=scene_pyramid.north,
+            forward=-scene_instance.up,
+            center=(scene_instance.ground + 2.0 * scene_instance.up),
+            up=scene_instance.north,
         )
         return out
+
+    def test_attributes(self, instance, instance_kws, assert_allclose):
+        r"""Test attributes."""
+        if not isinstance(instance, blaster.SunRayBlaster):
+            assert_allclose(instance.intensity, 1.0)
+            kws2 = copy.deepcopy(instance_kws)
+            kws2.pop('forward')
+            kws2['east'] = instance.east
+            instance2 = self.cls(**kws2)
+            assert_allclose(instance2.forward, instance.forward)
+            assert_allclose(instance.east, instance2.east)
+            kws3 = copy.deepcopy(instance_kws)
+            kws3.pop('up')
+            kws3['east'] = instance.east
+            instance3 = self.cls(**kws3)
+            assert_allclose(instance3.up, instance.up)
+            assert_allclose(instance.east, instance3.east)
+        assert_allclose(instance.intensity,
+                        instance.intensity_density
+                        * instance.width * instance.height)
+
+    def test_traits_errors(self, skip_if_not_base):
+        r"""Test errors raised for invalid traits."""
+        with pytest.raises(traitlets.TraitError):
+            self.cls().forward
+
+    @pytest.fixture(scope="class")
+    def periodic_shift(self, instance_base):
+        return (
+            - (instance_base.width * (1 + 1 / instance_base.nx)
+               * instance_base.east)
+            - (instance_base.height * (1 + 1 / instance_base.ny)
+               * instance_base.up)
+        )
+
+    @pytest.fixture(scope="class")
+    def instance_kws(self, instance_type, instance_kws_base,
+                     periodic_shift):
+        if instance_type == "base":
+            return instance_kws_base
+        elif instance_type == "periodic":
+            out = copy.deepcopy(instance_kws_base)
+            out['period'] = np.ones((3, ), dtype="i4")
+            for k in ['center', 'ground', 'zenith', 'scene_limits']:
+                if k not in out:
+                    continue
+                out[k] = out[k] + periodic_shift
+            return out
+        raise NotImplementedError(instance_type)
 
 
 class TestProjectionRayBlaster(TestRayBlaster):
@@ -294,19 +564,20 @@ class TestProjectionRayBlaster(TestRayBlaster):
         u=np.array([0.625, 0.625, 0.1875, 0.1875], "f4"),
         v=np.array([0.1875, 0.1875, 0.625, 0.625], "f4"),
     )
+    _flux_density_result = 0.07103577
 
     @pytest.fixture(scope="class")
-    def instance_kws(self, scene_pyramid, intersection_width,
-                     fov_width):
+    def instance_kws_base(self, scene_instance, intersection_width,
+                          fov_width):
         out = copy.deepcopy(self._instance_kws)
         out.update(
             fov_width=fov_width,
             fov_height=fov_width,
             width=intersection_width / 2,
             height=intersection_width / 2,
-            forward=-scene_pyramid.up,
-            center=(scene_pyramid.ground + 2.0 * scene_pyramid.up),
-            up=scene_pyramid.north,
+            forward=-scene_instance.up,
+            center=(scene_instance.ground + 2.0 * scene_instance.up),
+            up=scene_instance.north,
         )
         return out
 
@@ -325,21 +596,23 @@ class TestProjectionRayBlaster(TestRayBlaster):
 
         out['tfar'][:, 1] = 1.0018513
         out['tfar'][:, 2] = 0.6678675
-        out['tfar'][:, 4] = 0.6743825
+        # out['tfar'][:, 4] = 0.6743825
 
         out['u'][:2, 2] = 0.4166667
         out['u'][2:, 2] = 0.2916667
-        out['u'][:2, 4] = 0.1262192
-        out['u'][2:, 4] = 0.7475615
+        # out['u'][:2, 4] = 0.1262192
+        # out['u'][2:, 4] = 0.7475615
 
         out['v'][:2, 2] = 0.2916667
         out['v'][2:, 2] = 0.4166666
-        out['v'][:2, 4] = 0.7475615
-        out['v'][2:, 4] = 0.1262192
+        # out['v'][:2, 4] = 0.7475615
+        # out['v'][2:, 4] = 0.1262192
 
         return out
 
 
+@pytest.mark.parametrize("instance_type", ["base", "with_center"],
+                         scope="class")
 class TestSphericalRayBlaster(TestProjectionRayBlaster):
 
     cls = blaster.SphericalRayBlaster
@@ -354,17 +627,39 @@ class TestSphericalRayBlaster(TestProjectionRayBlaster):
     def reorder_rays(self, instance_kws):
         if instance_kws.get('dont_include_center', False):
             return self._reorder_rays
-        return np.hstack([np.array([0], "i4"), self._reorder_rays + 1])
+        return np.hstack([np.array([self._reorder_rays.shape[0]], "i4"),
+                          self._reorder_rays])
 
     @pytest.fixture(scope="class")
-    def instance_kws(self, scene_pyramid, fov_radius):
+    def instance_kws_base(self, scene_instance, fov_radius):
         out = copy.deepcopy(self._instance_kws)
         out.update(
             fov_height=fov_radius,
-            forward=-scene_pyramid.up,
-            center=(scene_pyramid.ground + 4.0 * scene_pyramid.up),
-            up=scene_pyramid.north,
+            forward=-scene_instance.up,
+            center=(scene_instance.ground + 4.0 * scene_instance.up),
+            up=scene_instance.north,
         )
+        return out
+
+    @pytest.fixture(scope="class")
+    def instance_kws(self, instance_type, instance_kws_base):
+        if instance_type == "base":
+            return instance_kws_base
+        elif instance_type == "with_center":
+            out = copy.deepcopy(instance_kws_base)
+            out['dont_include_center'] = False
+            return out
+        raise NotImplementedError(instance_type)
+
+    @pytest.fixture
+    def flux_density_result(self, instance_kws, instance):
+        r"""float: Value for compute_flux_density test."""
+        if instance_kws.get('dont_include_center', False):
+            return self._flux_density_result
+        out = np.empty(instance.nray, "f8")
+        out.fill(0.05682861)
+        out[0] = 0.12800299  # Extra contribution from center ray
+        out[4] = 0.12800299  # Extra contribution from center ray
         return out
 
     @pytest.fixture(scope="class")
@@ -372,16 +667,33 @@ class TestSphericalRayBlaster(TestProjectionRayBlaster):
         out = copy.deepcopy(self._expected_result)
         out['tfar'][:] += np.float32(
             np.sqrt(4 + (intersection_radius / 2) ** 2))
-        if not instance_kws.get('dont_include_center', False):
-            out['tfar'] = np.hstack([np.array([2.4], "f4"), out['tfar']])
-            out['Ng'] = np.vstack([
-                np.array([0.0, 1.6, 0.5], "f4"),
-                out['Ng']
-            ])
-            out['geomID'] = np.hstack([0, out['geomID']])
-            out['primID'] = np.hstack([4, out['primID']])
-            out['u'] = np.hstack([1.0, out['u']])
-            out['v'] = np.hstack([0.0, out['v']])
+        if instance_kws.get('dont_include_center', False):
+            return out
+        out['tfar'] = np.hstack([out['tfar'], np.array([2.4], "f4")])
+        out['Ng'] = np.vstack([
+            out['Ng'],
+            np.array([0.0, 1.6, 0.5], "f4"),
+        ])
+        out['geomID'] = np.hstack([out['geomID'], 0])
+        out['primID'] = np.hstack([out['primID'], 4])
+        out['u'] = np.hstack([out['u'], 1.0])
+        out['v'] = np.hstack([out['v'], 0.0])
+        return out
+
+    @pytest.fixture(scope="class")
+    def expected_bounces_sorted(self, reorder_result, expected_bounces,
+                                instance_kws):
+        out = reorder_result(expected_bounces)
+        if instance_kws.get('dont_include_center', False):
+            return out
+        out['primID'][0, 1] = 0
+        out['tfar'][0, (1, 2)] = 1.5999
+        out['ray_dir'][0, 0, (1, 2)] = [0.56939501, -0.82206404]
+        out['ray_intensity'] *= 4.0 / 5.0
+        out['reflectance'][0, 1] = 0.5
+        out['transmittance'][0, 1] = 0.25
+        out['u'][0, 2] = 1.0
+        out['v'][0, (1, 2)] = [0.5, 0.0]
         return out
 
 
@@ -389,15 +701,18 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
     r"""Tests for SunRayBlaster."""
 
     cls = blaster.SunRayBlaster
+    _flux_density_result = np.array([
+        188.442729, 168.678366, 189.284625, 169.520262
+    ])
 
     @pytest.fixture(scope="class")
     def tolerances(self, tolerances_solar):
         return tolerances_solar
 
     @pytest.fixture(scope="class")
-    def instance_kws(self, location_champaign, altitude_champaign,
-                     datetime_champaign, scene_pyramid,
-                     intersection_width):
+    def instance_kws_base(self, location_champaign, altitude_champaign,
+                          datetime_champaign, scene_instance,
+                          intersection_width):
         out = copy.deepcopy(self._instance_kws)
         out.update(
             width=intersection_width,
@@ -406,10 +721,10 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
             longitude=location_champaign[1],
             altitude=altitude_champaign,
             date=datetime_champaign("noon"),
-            ground=scene_pyramid.ground,
-            zenith=(scene_pyramid.ground + 2.0 * scene_pyramid.up),
-            north=scene_pyramid.north,
-            scene_limits=scene_pyramid.limits,
+            ground=scene_instance.ground,
+            zenith=(scene_instance.ground + 2.0 * scene_instance.up),
+            north=scene_instance.north,
+            scene_limits=scene_instance.limits,
         )
         return out
 
@@ -421,11 +736,9 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
         ], "f4")
         out['u'] = np.array([
             0.4938758, 0.4621504, 0.26069576, 0.291072
-            # 0.4938756, 0.46215066, 0.26069573, 0.29107162
         ], "f4")
         out['v'] = np.array([
             0.23884134, 0.2758717, 0.4935331, 0.47110012
-            # 0.23884138, 0.27587134, 0.493533, 0.4711003
         ], "f4")
         return out
 
@@ -433,47 +746,121 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
     def expected_bounces(self, expected_bounces_base):
         out = copy.deepcopy(expected_bounces_base)
         out['Ng'][0, 2, :2] = [0.0, 1.6]
-        out['Ng'][0, 4, :2] = [0.0, -1.6]
-        out['Ng'][1, 4, :2] = [1.6, 0.0]
+        # out['Ng'][0, 4, :2] = [0.0, -1.6]
+        # out['Ng'][1, 4, :2] = [1.6, 0.0]
         out['Ng'][2, 2, :2] = [1.6, 0.0]
-        out['Ng'][3, 4, :2] = [0.0, 1.6]
+        # out['Ng'][3, 4, :2] = [0.0, 1.6]
         out['primID'][:, 1] = 1
         out['primID'][:2, 2] = 4
         out['primID'][2:, 2] = 5
-        out['primID'][:2, 4] = [2, 5]
-        out['primID'][2:, 4] = 4
-        out['ray_dir'][:, (2, 5), :] = [
+        # out['primID'][:2, 4] = [2, 5]
+        # out['primID'][2:, 4] = 4
+        out['ray_dir'][:, 2, :] = [
             0.19461885, 0.21193677, 0.9577089]
+        # out['ray_dir'][:, (2, 5), :] = [
+        #     0.19461885, 0.21193677, 0.9577089]
 
         out['ray_dir'][0, 0, :] = [-0.7053038, 0.21193677, -0.67648304]
-        out['ray_dir'][0, 4, :] = [0.19461885, -0.71954024, 0.66662234]
+        # out['ray_dir'][0, 4, :] = [0.19461885, -0.71954024, 0.66662234]
 
         out['ray_dir'][1, 0, :] = [0.19461885, 0.3710891, -0.9079738]
-        out['ray_dir'][1, 4, :] = [0.19461885, -0.71954024, 0.66662234]
+        # out['ray_dir'][1, 4, :] = [0.19461885, -0.71954024, 0.66662234]
 
         out['ray_dir'][2, 0, :] = [0.19461885, -0.71954024, -0.66662234]
-        out['ray_dir'][2, 4, :] = [-0.7053038, 0.21193677, 0.67648304]
+        # out['ray_dir'][2, 4, :] = [-0.7053038, 0.21193677, 0.67648304]
 
         out['ray_dir'][3, 0, :] = [0.38532552, 0.21193677, -0.8981131]
-        out['ray_dir'][3, 4, :] = [-0.7053038, 0.21193677, 0.67648304]
+        # out['ray_dir'][3, 4, :] = [-0.7053038, 0.21193677, 0.67648304]
 
-        out['tfar'][0, (1, 2, 4)] = [
-            8.2499540e-01, 6.6370875e-01, 6.4942205e-01]
-        out['tfar'][1, (1, 2, 4)] = [
-            7.7199340e-01, 1.3182010e-01, 6.8892252e-01]
-        out['tfar'][2, (1, 2, 4)] = [
-            8.2442284e-01, 6.7223877e-01, 5.5447668e-01]
-        out['tfar'][3, (1, 2, 4)] = [
-            7.8694510e-01, 1.6668637e-01, 5.2267313e-01]
+        idx_hit = (1, 2)
+        # idx_hit = (1, 2, 4)
 
-        out['u'][0, (1, 2, 4)] = [0.592483, 0.397335, 0.3291404]
-        out['u'][1, (1, 2, 4)] = [0.342789, 0.07896312, 0.2817207]
-        out['u'][2, (1, 2, 4)] = [0.33207, 0.362786, 0.636917]
-        out['u'][3, (1, 2, 4)] = [0.08237622, 0.6788575, 0.32086235]
+        out['tfar'][0, idx_hit] = [
+            8.2499540e-01, 6.6370875e-01]  # , 6.4942205e-01]
+        out['tfar'][1, idx_hit] = [
+            7.7199340e-01, 1.3182010e-01]  # , 6.8892252e-01]
+        out['tfar'][2, idx_hit] = [
+            8.2442284e-01, 6.7223877e-01]  # , 5.5447668e-01]
+        out['tfar'][3, idx_hit] = [
+            7.8694510e-01, 1.6668637e-01]  # , 5.2267313e-01]
 
-        out['v'][0, (1, 2, 4)] = [0.06816418, 0.33803925, 0.66795087]
-        out['v'][1, (1, 2, 4)] = [0.5897705, 0.64340323, 0.36603677]
-        out['v'][2, (1, 2, 4)] = [0.0894432, 0.40244046, 0.08917642]
-        out['v'][3, (1, 2, 4)] = [0.6110496, 0.09983302, 0.42093846]
+        out['u'][0, idx_hit] = [0.592483, 0.397335]  # , 0.3291404]
+        out['u'][1, idx_hit] = [0.342789, 0.07896312]  # , 0.2817207]
+        out['u'][2, idx_hit] = [0.33207, 0.362786]  # , 0.636917]
+        out['u'][3, idx_hit] = [0.08237622, 0.6788575]  # , 0.32086235]
+
+        out['v'][0, idx_hit] = [0.06816418, 0.33803925]  # , 0.66795087]
+        out['v'][1, idx_hit] = [0.5897705, 0.64340323]  # , 0.36603677]
+        out['v'][2, idx_hit] = [0.0894432, 0.40244046]  # , 0.08917642]
+        out['v'][3, idx_hit] = [0.6110496, 0.09983302]  # , 0.42093846]
+
+        out['ray_intensity'][:, 0] = 21.3446598
+        out['ray_intensity'][:, 1] = 10.6723299
+        out['ray_intensity'][:, 2] = 5.33616491
 
         return out
+
+    def test_traits_errors(self, instance_kws, datetime_champaign,
+                           skip_if_not_base):
+        r"""Test errors raised for invalid traits."""
+        with pytest.raises(traitlets.TraitError):
+            self.cls().forward
+        with pytest.raises(traitlets.TraitError):
+            kws = instance_kws.copy()
+            kws['date'] = datetime_champaign('midnight')
+            self.cls(**kws).solar_altitude
+        with pytest.raises(traitlets.TraitError):
+            kws = instance_kws.copy()
+            kws['solar_altitude'] = -50.0
+            self.cls(**kws)
+        with pytest.raises(traitlets.TraitError):
+            kws = instance_kws.copy()
+            kws['ray_intensity'] = 1.0
+            self.cls(**kws)
+
+    def test_alternate_constructions(self, instance_type, instance_kws,
+                                     periodic_shift,
+                                     assert_nested_allclose, tolerances):
+        # Valid solar altitude
+        kws = instance_kws.copy()
+        kws['solar_altitude'] = 50.0
+        self.cls(**kws)
+        # Center from ground
+        kws = instance_kws.copy()
+        kws['scene_limits'] = None
+        inst = self.cls(**kws)
+        assert inst.scene_limits is None
+        expected = np.array([0.11076234, 0.0761265, 1.91541779])
+        if instance_type == 'periodic':
+            expected = expected + periodic_shift
+        assert_nested_allclose(inst.center, expected, **tolerances)
+        # Altitude from pressure
+        kws = instance_kws.copy()
+        kws['pressure'] = 2000.0
+        kws.pop('altitude', None)
+        self.cls(**kws).altitude
+        # Specified intensity
+        kws = instance_kws.copy()
+        kws['intensity'] = 1.0
+        self.cls(**kws).intensity_density
+
+    def test_get_solar_direction(self, instance, instance_kws,
+                                 skip_if_not_base,
+                                 assert_nested_allclose, tolerances):
+        expected = instance.forward
+        actual = self.cls.get_solar_direction(
+            instance_kws['latitude'],
+            instance_kws['longitude'],
+            instance_kws['date'],
+            instance.zenith_direction,
+            instance_kws['north'],
+            altitude=instance.altitude,
+        )
+        assert_nested_allclose(actual, expected, **tolerances)
+
+    def test_solar_rotation(self, instance, skip_if_not_base,
+                            assert_nested_allclose, tolerances):
+        test_point = instance.ground + 100 * instance.zenith_direction
+        expected = instance.ground - 100 * instance.forward
+        actual = instance.solar_rotation(test_point)
+        assert_nested_allclose(actual, expected, **tolerances)

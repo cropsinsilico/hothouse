@@ -17,14 +17,71 @@ def test_op_along_axis(assert_allclose):
     )
 
 
+def test_norm_along_axis(assert_allclose):
+    r"""Test elementwise normalization of vectors."""
+    x = np.ones((3, 3))
+    y = np.ones((3, 3)) / np.sqrt(3)
+    assert_allclose(sun_calc.norm_along_axis(x, axis=0), y)
+    assert_allclose(sun_calc.norm_along_axis(x, axis=1), y)
+
+
+def test_incident_power_direct(assert_allclose):
+    r"""Test incident_power_direct."""
+    ray_dir = np.array([
+        [-1, 0, 0],
+        [-1, 0, 0],
+        [-1, 0, 0],
+        [-1, 0, 0],
+    ], "f4")
+    norm = np.array([
+        [4, 0, 0],
+        [1, 1, 0],
+        [0, 0, 4],
+        [-1, 0, 0],
+    ], "f4")
+    res = np.array([
+        1, 1 / np.sqrt(2), 0, 0
+    ], "f4")
+    assert_allclose(
+        sun_calc.incident_power_direct(ray_dir, norm,
+                                       any_direction=False),
+        res)
+
+
+def test_incident_power_diffuse(assert_allclose):
+    r"""Test incident_power_diffuse."""
+    up_dir = np.array([
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+    ], "f4")
+    norm = np.array([
+        [4, 0, 0],
+        [1, 1, 0],
+        [0, 0, 4],
+        [-1, 0, 0],
+    ], "f4")
+    res = np.array([
+        1, ((1 / np.sqrt(2)) + 1) / 2, 0.5, 0
+    ], "f4")
+    assert_allclose(
+        sun_calc.incident_power_diffuse(up_dir, norm),
+        res)
+
+
 def test_stable_sin(assert_allclose):
     r"""Test stable_sin."""
-    x = np.linspace(0, 2 * np.pi, 100)
-    assert_allclose(sun_calc.stable_sin(x), np.sin(x))
+    x = np.linspace(-2 * np.pi, 2 * np.pi, 100)
+    y = np.sin(x)
+    assert_allclose(sun_calc.stable_sin(x), y)
+    for xx, yy in zip(x, y):
+        assert_allclose(sun_calc.stable_sin(xx), yy)
     x = (np.pi / 2) * np.arange(4)
     y = np.array([0.0, 1.0, 0.0, -1.0])
     for xx, yy in zip(x, y):
         assert_allclose(sun_calc.stable_sin(xx), yy)
+        assert_allclose(sun_calc.stable_sin(xx - 2 * np.pi), yy)
     nrep = 5
     x = np.hstack([x + i * 2 * np.pi for i in range(nrep)]
                   + [x - i * 2 * np.pi for i in range(nrep)])
@@ -35,11 +92,15 @@ def test_stable_sin(assert_allclose):
 def test_stable_cos(assert_allclose):
     r"""Test stable_cos."""
     x = np.linspace(-2 * np.pi, 2 * np.pi, 100)
-    assert_allclose(sun_calc.stable_cos(x), np.cos(x))
+    y = np.cos(x)
+    assert_allclose(sun_calc.stable_cos(x), y)
+    for xx, yy in zip(x, y):
+        assert_allclose(sun_calc.stable_cos(xx), yy)
     x = (np.pi / 2) * np.arange(4)
     y = np.array([1.0, 0.0, -1.0, 0.0])
     for xx, yy in zip(x, y):
         assert_allclose(sun_calc.stable_cos(xx), yy)
+        assert_allclose(sun_calc.stable_cos(xx - 2 * np.pi), yy)
     nrep = 5
     x = np.hstack([x + i * 2 * np.pi for i in range(nrep)]
                   + [x - i * 2 * np.pi for i in range(nrep)])
@@ -50,11 +111,15 @@ def test_stable_cos(assert_allclose):
 def test_stable_tan(assert_allclose):
     r"""Test stable_tan."""
     x = np.linspace(-2 * np.pi, 2 * np.pi, 100)
-    assert_allclose(sun_calc.stable_tan(x), np.tan(x))
+    y = np.tan(x)
+    assert_allclose(sun_calc.stable_tan(x), y)
+    for xx, yy in zip(x, y):
+        assert_allclose(sun_calc.stable_tan(xx), yy)
     x = (np.pi / 4) * np.arange(4)
     y = np.array([0.0, 1.0, np.inf, -1.0])
     for xx, yy in zip(x, y):
         assert_allclose(sun_calc.stable_tan(xx), yy)
+        assert_allclose(sun_calc.stable_tan(xx - 2 * np.pi), yy)
     nrep = 5
     x = np.hstack([x + i * np.pi for i in range(nrep)]
                   + [x - i * np.pi for i in range(nrep)])
@@ -65,7 +130,10 @@ def test_stable_tan(assert_allclose):
 def test_stable_arcsin(assert_allclose):
     r"""Test stable_arcsin."""
     x = np.linspace(-1, 1, 100)
-    assert_allclose(sun_calc.stable_arcsin(x), np.arcsin(x))
+    y = np.arcsin(x)
+    assert_allclose(sun_calc.stable_arcsin(x), y)
+    for xx, yy in zip(x, y):
+        assert_allclose(sun_calc.stable_arcsin(xx), yy)
     x = np.array([-1.0, 0.0, 1.0])
     y = np.array([-np.pi / 2, 0.0, np.pi / 2])
     for xx, yy in zip(x, y):
@@ -83,7 +151,10 @@ def test_stable_arcsin(assert_allclose):
 def test_stable_arccos(assert_allclose):
     r"""Test stable_arccos."""
     x = np.linspace(-1, 1, 100)
-    assert_allclose(sun_calc.stable_arccos(x), np.arccos(x))
+    y = np.arccos(x)
+    assert_allclose(sun_calc.stable_arccos(x), y)
+    for xx, yy in zip(x, y):
+        assert_allclose(sun_calc.stable_arccos(xx), yy)
     x = np.array([-1.0, 0.0, 1.0])
     y = np.array([np.pi, np.pi / 2, 0.0])
     for xx, yy in zip(x, y):
@@ -101,7 +172,10 @@ def test_stable_arccos(assert_allclose):
 def test_stable_arctan(assert_allclose):
     r"""Test stable_arctan."""
     x = np.linspace(-1, 1, 100)
-    assert_allclose(sun_calc.stable_arctan(x), np.arctan(x))
+    y = np.arctan(x)
+    assert_allclose(sun_calc.stable_arctan(x), y)
+    for xx, yy in zip(x, y):
+        assert_allclose(sun_calc.stable_arctan(xx), yy)
     x = np.array([-1.0, 0.0, 1.0, np.inf, -np.inf])
     y = np.array([-np.pi / 4, 0.0, np.pi / 4, np.pi / 2, -np.pi / 2])
     for xx, yy in zip(x, y):
@@ -190,5 +264,23 @@ def test_ppfd(date_name, direct, diffuse, location_champaign,
     date = datetime_champaign(date_name)
     ppfd_tot = sun_calc.solar_ppfd(*location_champaign, date,
                                    altitude=altitude_champaign)
+    assert_allclose(ppfd_tot['direct'], direct)
+    assert_allclose(ppfd_tot['diffuse'], diffuse)
+
+
+@pytest.mark.parametrize("date_name,direct,diffuse", [
+    ("noon", 1347.48453331, 260.6726156),
+    ("sunrise", 230.9169281, 50.46419718),
+    ("sunset", 0.7895737575, 0.4230894741),
+])
+def test_ppfd_default(date_name, direct, diffuse, location_champaign,
+                      datetime_champaign, assert_allclose):
+    r"""Test PPFD calculation."""
+    date = datetime_champaign(date_name)
+    ppfd_tot = sun_calc.solar_ppfd(*location_champaign, date)
+    assert_allclose(ppfd_tot['direct'], direct)
+    assert_allclose(ppfd_tot['diffuse'], diffuse)
+    ppfd_tot = sun_calc.solar_ppfd(*location_champaign, date,
+                                   pressure=101325)
     assert_allclose(ppfd_tot['direct'], direct)
     assert_allclose(ppfd_tot['diffuse'], diffuse)

@@ -1,15 +1,17 @@
 import traittypes
 import traitlets
 import pythreejs
+import os
 import numpy as np
-import functools
 # from IPython.core.display import display
 
 from .model import Model
 from .blaster import (
-    QueryType, RayBlaster, SunRayBlaster,
+    RayBlaster, SunRayBlaster,
 )
-from .traits_support import check_shape, check_dtype
+from .traits_support import (
+    check_shape, check_dtype, dependent_property
+)
 from . import sun_calc
 
 from embreex.mesh_construction import TriangleMesh
@@ -21,8 +23,6 @@ EmbreeScene = rtcs.EmbreeScene
 # Use local subclass of embreex scene w/ support for callbacks
 # from .callback_handler import CallbackScene
 # EmbreeScene = CallbackScene
-
-cached_property = getattr(functools, "cached_property", property)
 
 
 class CastAccumulator(traitlets.HasTraits):
@@ -41,7 +41,7 @@ class CastAccumulator(traitlets.HasTraits):
                 component (hothouse.model.Model): Scene component
                     that value is being calculated for.
                 ray_dir (np.ndarray): Directions of rays.
-                power (np.ndarray): Power of rays.
+                ray_intensity (np.ndarray): Intensity of rays.
                 primID (np.ndarray): Index of the component face that
                     each ray intersects within the component geometry
                     that contains it. -1 for no intersection.
@@ -72,13 +72,15 @@ class CastAccumulator(traitlets.HasTraits):
     _default_dtypes = {'count': np.dtype('i4')}
     _default_no_bounce = ['tfar']
     _default_values = {'tfar': 1e37}
-    _accum_keys = ["ray_dir", "power", 'primID', 'tfar', 'Ng', 'u', 'v']
+    _accum_keys = [
+        "ray_dir", "ray_intensity", 'primID', 'tfar', 'Ng', 'u', 'v',
+    ]
 
     name = traitlets.Unicode()
     function = traitlets.Callable()
     dtype = traitlets.Instance(np.dtype)
     value = traitlets.CFloat()
-    no_multibounce = traitlets.Bool(False)
+    no_multibounce = traitlets.Bool()
     kws = traitlets.Dict()
 
     @traitlets.default("dtype")
@@ -130,7 +132,7 @@ class CastAccumulator(traitlets.HasTraits):
                 v = counts[k]
             args.append(v[idx, ...])
         self.function(dst[self.name][ci], component, *args, **self.kws)
-        if "bounces" in counts and not self.no_multibounce:
+        if (not self.no_multibounce) and "bounces" in counts:
             self.accumulate(dst, ci, component, counts["bounces"],
                             idx=idx_bounces)
 
@@ -265,9 +267,7 @@ class Scene(traitlets.HasTraits):
         for k, v in accumulators.items():
             if v is False:
                 continue
-            if isinstance(v, CastAccumulator):
-                accum[k] = v
-            elif k == 'flux' and v is True:
+            if k == 'flux' and v is True:
                 accum[k] = CastAccumulator.from_kwargs(
                     k, {'kws': {'any_direction': any_direction}})
             elif k == 'flux_density' and v is True:
@@ -287,7 +287,7 @@ class Scene(traitlets.HasTraits):
                     v.accumulate(out, ci, component, counts,
                                  idx=idx, idx_bounces=idx_bounces,
                                  ray_dir=blaster.directions,
-                                 power=blaster.ray_intensity)
+                                 ray_intensity=blaster.ray_intensity)
                 if (('flux' in accum
                      and blaster.diffuse_intensity > 0)):
                     out['flux'][ci] += (
@@ -355,17 +355,7 @@ class Scene(traitlets.HasTraits):
         r"""int: Number of components in the scene."""
         return len(self.components)
 
-    @property
-    def transmittance(self):
-        r"""list: Tranmittance values for each component's faces."""
-        return [c.transmittance for c in self.components]
-
-    @property
-    def reflectance(self):
-        r"""list: Reflectance values for each component's faces."""
-        return [c.reflectance for c in self.components]
-
-    @cached_property
+    @dependent_property("components")
     def limits(self):
         r"""np.ndarray: Positions of corners of a box containing all
         points in the scene."""
@@ -384,7 +374,7 @@ class Scene(traitlets.HasTraits):
     def compute_solar_ppfd(self, latitude, longitude, date,
                            direct_ppfd=None, diffuse_ppfd=None,
                            any_direction=True, multibounce=False,
-                           power_threshold=0.001, **kwargs):
+                           ray_intensity_threshold_abs=0.001, **kwargs):
         r"""Compute the photon flux density on each face in the scene
         from solar irradiance for a given location and time/date.
 
@@ -411,8 +401,9 @@ class Scene(traitlets.HasTraits):
                 Defaults to True.
             multibounce (bool, optional): If True, rays should be tracked
                 through reflections/transmission.
-            power_threshold (float, optional): Threshold below which rays
-                should no longer be tracked during bounces.
+            ray_intensity_threshold_abs (float, optional): Threshold
+                below which rays should no longer be tracked during
+                bounces.
             **kwargs: Additional keyword arguments are passed to the
                 SunRayBlaster constructor.
 
@@ -421,12 +412,16 @@ class Scene(traitlets.HasTraits):
                 density values for each triangle in the component.
 
         """
-        rb = self.get_sun_blaster(latitude, longitude, date,
-                                  direct_ppfd=direct_ppfd,
-                                  diffuse_ppfd=diffuse_ppfd, **kwargs)
-        return self.compute_flux_density(rb, any_direction=any_direction,
-                                         multibounce=multibounce,
-                                         power_threshold=power_threshold)
+        rb = self.get_sun_blaster(
+            latitude, longitude, date,
+            direct_ppfd=direct_ppfd,
+            diffuse_ppfd=diffuse_ppfd, **kwargs
+        )
+        return self.compute_flux_density(
+            rb, any_direction=any_direction,
+            multibounce=multibounce,
+            ray_intensity_threshold_abs=ray_intensity_threshold_abs,
+        )
 
     def get_sun_blaster(self, latitude, longitude, date,
                         direct_ppfd=None, diffuse_ppfd=None,
@@ -481,12 +476,14 @@ class Scene(traitlets.HasTraits):
         return blaster
 
     def animate_sun(self, camera, latitude, longitude,
-                    t_start, t_stop, n_step, altitude=180.0,
-                    fname=None):
+                    t_start, t_stop, n_step, fname=None,
+                    fps=15, bitrate=1800, multibounce=True, **kwargs):
         r"""Create an animation of the sun moving across the scene
         during the specified time.
 
         Args:
+            camera (RayBlaster): Camera ray blaster with one ray per
+                pixel.
             latitude (float): Latitude in degrees.
             longitude (float): Longitude in degrees.
             t_start (datetime.datetime): Start date & time w/ timezone
@@ -495,11 +492,12 @@ class Scene(traitlets.HasTraits):
                 information.
             n_step (int): Number of steps between t_start and t_stop
                 to include in animation.
-            altitude (float, optional): Distance above sea level in
-                meters. Defaults to 180 meters (roughly the average for
-                Illinois).
             fname (str, optional): File where animation should be saved.
                 Defaults to None and animation will be shown instead.
+            fps (int, optional): Frame refresh rate in frame per second.
+            bitrate (int, optional): Move bitrate in kilobits per second.
+            **kwargs: Additional keyword arguments are passed to the
+                constructor for the SunRayBlaster at each timestep.
 
         Returns:
             matplotlib.animation.FuncAnimation: Animation object.
@@ -509,20 +507,17 @@ class Scene(traitlets.HasTraits):
         from matplotlib.animation import FuncAnimation, writers
         from matplotlib.colors import LogNorm
         import pandas as pd
-        nx = ny = 1024
         fig, ax = plt.subplots()
-        img = plt.imshow(np.nan * np.ones((nx, ny)), origin='lower',
+        img = plt.imshow(np.nan * np.ones((camera.nx, camera.ny)),
+                         origin='lower',
                          norm=LogNorm(50, 5.0e4))
         plt.colorbar()
 
         def update(frame):
-            ppfd_tot = sun_calc.solar_ppfd(latitude, longitude, frame,
-                                           altitude=altitude)
             sun = self.get_sun_blaster(latitude, longitude, frame,
-                                       nx=nx, ny=ny,
-                                       direct_ppfd=ppfd_tot['direct'],
-                                       diffuse_ppfd=ppfd_tot['diffuse'])
-            o = camera.compute_flux_density(self, sun, multibounce=True)
+                                       **kwargs)
+            o = camera.compute_flux_density(self, sun,
+                                            multibounce=multibounce)
             o[o <= 0] = np.nan
             img.set_data(o.reshape((camera.ny, camera.nx), order='F'))
             return img,
@@ -532,8 +527,15 @@ class Scene(traitlets.HasTraits):
         if fname is None:
             plt.show()
         else:
-            Writer = writers['html']
-            writer = Writer(fps=15, metadata=dict(artist='Me'), bitrate=1800)
+            ext2writer = {
+                'mp4': 'ffmpeg',
+                'mpeg': 'ffmpeg',
+                'gif': 'ffmpeg',
+            }
+            ext = os.path.splitext(fname)[-1].strip('.')
+            Writer = writers[ext2writer.get(ext, ext)]
+            writer = Writer(fps=fps, metadata=dict(artist='Me'),
+                            bitrate=bitrate)
             ani.save(fname, writer=writer)
         return ani
 
@@ -602,11 +604,13 @@ class Scene(traitlets.HasTraits):
         )
         children = [cam, pythreejs.AmbientLight(color="#dddddd")]
         material = pythreejs.MeshBasicMaterial(
-            color="#ff0000", vertexColors="VertexColors", side="DoubleSide"
+            color="#ff0000", vertexColors="VertexColors",
+            side="DoubleSide"
         )
         for model in self.components:
             mesh = pythreejs.Mesh(
-                geometry=model.geometry, material=material, position=[0, 0, 0]
+                geometry=model.geometry, material=material,
+                position=[0, 0, 0]
             )
             children.append(mesh)
 
@@ -672,9 +676,9 @@ class PeriodicScene(Scene):
         scene."""
         out = self.periodic_shifts.shape[0]
         if self.dont_reflect:
-            out_exp = np.prod(self.count) - 1
+            out_exp = np.prod(self.count[self.count > 0]) - 1
         else:
-            out_exp = np.prod(2 * self.count + 1) - 1
+            out_exp = np.prod(2 * self.count[self.count > 0] + 1) - 1
         assert out == out_exp
         return out
 
@@ -683,28 +687,6 @@ class PeriodicScene(Scene):
         r"""int: Total number of periodic components in the scene."""
         ncomponents = self.ncomponents
         return ncomponents * self.nperiodic_copies
-
-    @property
-    def transmittance_periodic(self):
-        r"""list: Tranmittance values for each component's faces
-        including periodic components."""
-        out = []
-        for c in self.components:
-            out += [
-                c.transmittance for _ in range(self.nperiodic_copies + 1)
-            ]
-        return out
-
-    @property
-    def reflectance_periodic(self):
-        r"""list: Reflectance values for each component's faces
-        including periodic components."""
-        out = []
-        for c in self.components:
-            out += [
-                c.reflectance for _ in range(self.nperiodic_copies + 1)
-            ]
-        return out
 
     @classmethod
     def get_periodic_shifts(cls, period, direction, count,
@@ -772,24 +754,19 @@ class PeriodicScene(Scene):
             object: Finalized raytracer result.
 
         """
-        nperiodic = self.nperiodic_copies
-        ids = None
         if isinstance(output, dict):
+            nperiodic = self.nperiodic_copies
             ids = output["geomID"]
-        elif query_type == QueryType.INTERSECT:
-            # TODO This isn't actually what pyembree outputs
-            ids = output
-        else:
-            return output
-        for compID in range(len(self.components)):
-            geomID = compID * (nperiodic + 1)
-            ids[ids == geomID] = compID
-            bufferID = (compID if self.buffer_as_primary else -1)
-            for vgeomID in range(geomID + 1, geomID + nperiodic + 1):
-                ids[ids == vgeomID] = bufferID
+            for compID in range(len(self.components)):
+                geomID = compID * (nperiodic + 1)
+                ids[ids == geomID] = compID
+                bufferID = (compID if self.buffer_as_primary else -1)
+                for vgeomID in range(geomID + 1, geomID + nperiodic + 1):
+                    ids[ids == vgeomID] = bufferID
         return output
 
-    @cached_property
+    @dependent_property("period", "direction", "count",
+                        "dont_reflect", "dont_center")
     def periodic_shifts(self):
         r"""np.ndarray: Shifts for periodic components."""
         return self.get_periodic_shifts(

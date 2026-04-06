@@ -5,6 +5,16 @@ import datetime
 import numpy as np
 
 
+class NestedAssertionError(AssertionError):
+
+    def __init__(self, nested):
+        self.nested = nested
+        msg = ''
+        for k, v in nested.items():
+            msg += f'\n\n{k}\n\t' + v.replace('\n', '\n\t')
+        super(NestedAssertionError, self).__init__(msg)
+
+
 @pytest.fixture(scope="session")
 def tz_champaign():
     r"""Timezone for Champaign, IL"""
@@ -34,6 +44,8 @@ def datetime_champaign(tz_champaign):
             args = (2020, 6, 17, 5, 23, 0, 0)
         elif name == 'sunset':
             args = (2020, 6, 17, 19, 25, 0, 0)
+        elif name == 'midnight':
+            args = (2020, 6, 17, 0, 25, 0, 0)
         return datetime.datetime(*args, tz_champaign)
 
     return _datetime_champaign
@@ -46,64 +58,140 @@ def datadir():
 
 
 @pytest.fixture(scope="session")
-def model_soy():
-    r"""Model containing test soy data."""
+def fname_ply_soy():
+    r"""Path to Ply file containing a simulated soy plant."""
     from hothouse.datasets import PLANTS
+    return PLANTS.fetch("fullSoy_2-12a.ply")
+
+
+@pytest.fixture(scope="session")
+def fname_obj_sphere(datadir):
+    r"""Path to ObjWavefront file containing a sphere."""
+    return os.path.join(datadir, 'sphere.obj')
+
+
+@pytest.fixture(scope="session")
+def fname_ply_pyramid(datadir):
+    r"""Path to Ply file containing a pyramid."""
+    return os.path.join(datadir, 'pyramid.ply')
+
+
+@pytest.fixture(scope="session")
+def fname_obj_pyramid(datadir):
+    r"""Path to ObjWavefront file containing a pyramid."""
+    return os.path.join(datadir, 'pyramid.obj')
+
+
+@pytest.fixture(scope="session")
+def geometry_fname(datadir):
+    r"""Factory for test geometry file names.
+
+    Args:
+        name (str): Geometry name.
+        ftype (str, optional): Geometry file type.
+
+    Returns:
+        str: Path to the file containing the described test geometry.
+
+    """
+
+    def _geometry_fname(name, ftype=None):
+        if ftype is None:
+            ftype = 'obj' if name in ['sphere'] else 'ply'
+        if name == 'soy' and ftype == 'ply':
+            from hothouse.datasets import PLANTS
+            return PLANTS.fetch("fullSoy_2-12a.ply")
+        fname = os.path.join(datadir, f'{name}.{ftype}')
+        if not os.path.isfile(fname):
+            raise NotImplementedError(f"No test data for \"{name}\" "
+                                      f"(ftype = \"{ftype}\"")
+        return fname
+
+    return _geometry_fname
+
+
+@pytest.fixture(scope="session")
+def geometry_model(geometry_fname):
+    r"""Cached factory for test models.
+
+    Args:
+        name (str): Geometry name.
+        ftype (str, optional): Geometry file type.
+
+    Returns:
+        hothouse.model.Model: Test model containing the described
+            geometry.
+
+    """
     from hothouse.model import Model
-    fname = PLANTS.fetch("fullSoy_2-12a.ply")
-    return Model.from_ply(fname)
+    cache = {}
+
+    def _geometry_model(name, ftype=None, **kwargs):
+        key = (name, ftype)
+        if key in cache:
+            return cache[key]
+        defaults = {}
+        if name != 'soy':
+            defaults.update(
+                attributes=dict(
+                    reflectance=0.5,
+                    transmittance=0.25,
+                )
+            )
+        for k, v in defaults.items():
+            kwargs.setdefault(k, v)
+        fname = geometry_fname(name, ftype=ftype)
+        out = Model.from_file(fname, **kwargs)
+        cache[key] = out
+        return out
+
+    return _geometry_model
 
 
 @pytest.fixture(scope="session")
-def model_sphere(datadir):
-    r"""Model containg test sphere data."""
-    from hothouse.model import Model
-    fname = os.path.join(datadir, 'sphere.obj')
-    return Model.from_obj(fname, reflectance=0.5, transmittance=0.25)
+def geometry_scene(geometry_model):
+    r"""Cached factory for test scenes.
 
+    Args:
+        name (str): Geometry name.
+        ftype (str, optional): Geometry file type.
 
-@pytest.fixture(scope="session")
-def model_pyramid(datadir):
-    r"""Model containg test pyramid data."""
-    from hothouse.model import Model
-    fname = os.path.join(datadir, 'pyramid.ply')
-    return Model.from_ply(fname, reflectance=0.5, transmittance=0.25)
+    Returns:
+        hothouse.scene.Scene: Test scene containing the described
+            geometry.
 
-
-@pytest.fixture(scope="session")
-def scene_soy(model_soy):
-    r"""Scene containing test soy data."""
+    """
     from hothouse.scene import Scene
-    s = Scene(
-        ground=np.array([0.0, 0.0, 200.0], dtype="f8"),
-        up=np.array([0.0, 0.0, 1.0], dtype="f8"),
-        north=np.array([0.0, 1.0, 0.0], dtype="f8"),
-    )
-    s.add_component(model_soy)
-    return s
+    cache = {}
 
+    def _geometry_scene(name, ftype=None, **kwargs):
+        key = (name, ftype)
+        if key in cache:
+            return cache[key]
+        model = geometry_model(name, ftype=ftype)
+        defaults = {}
+        if name == "soy":
+            defaults.update(
+                ground=np.array([0.0, 0.0, 200.0], dtype="f8"),
+                up=np.array([0.0, 0.0, 1.0], dtype="f8"),
+                north=np.array([0.0, 1.0, 0.0], dtype="f8"),
+            )
+        elif name == "pyramid":
+            defaults.update(
+                ground=np.array([0.5, 0.5, 0.0], "f8"),
+                up=np.array([0.0, 0.0, 1.0], dtype="f8"),
+                north=np.array(
+                    [1.0 / np.sqrt(2.0), 1.0 / np.sqrt(2.0), 0.0],
+                    dtype="f8"),
+            )
+        for k, v in defaults.items():
+            kwargs.setdefault(k, v)
+        s = Scene(**kwargs)
+        s.add_component(model)
+        cache[key] = s
+        return s
 
-@pytest.fixture(scope="session")
-def scene_sphere(model_sphere):
-    r"""Scene containing test sphere data."""
-    from hothouse.scene import Scene
-    s = Scene()
-    s.add_component(model_sphere)
-    return s
-
-
-@pytest.fixture(scope="session")
-def scene_pyramid(model_pyramid):
-    r"""Scene containing test pyramid data."""
-    from hothouse.scene import Scene
-    s = Scene(
-        ground=np.array([0.5, 0.5, 0.0], "f8"),
-        up=np.array([0.0, 0.0, 1.0], dtype="f8"),
-        north=np.array(
-            [1.0 / np.sqrt(2.0), 1.0 / np.sqrt(2.0), 0.0], dtype="f8"),
-    )
-    s.add_component(model_pyramid)
-    return s
+    return _geometry_scene
 
 
 @pytest.fixture(scope="session")
@@ -130,12 +218,16 @@ def assert_almost_equal():
 def assert_dicts_almost_equal(assert_almost_equal):
     r"""Assert that dictionaries of numpy arrays are almost equal."""
 
-    def _assert_dicts_almost_equal(a, b, ignore_keys=None, **kwargs):
+    def _assert_dicts_almost_equal(a, b, ignore_keys=None,
+                                   only_keys=None, **kwargs):
         a_keys = list(sorted(a.keys()))
         b_keys = list(sorted(b.keys()))
         if ignore_keys:
             a_keys = [k for k in a_keys if k not in ignore_keys]
             b_keys = [k for k in b_keys if k not in ignore_keys]
+        if only_keys:
+            a_keys = [k for k in a_keys if k in only_keys]
+            b_keys = [k for k in b_keys if k in only_keys]
         assert a_keys == b_keys
         for k in b_keys:
             try:
@@ -158,6 +250,55 @@ def assert_allclose():
         np.testing.assert_allclose(a, b, rtol=rtol, atol=atol, **kwargs)
 
     return _assert_allclose
+
+
+@pytest.fixture(scope="session")
+def assert_nested_allclose(assert_allclose):
+    from collections import OrderedDict
+
+    def _assert_nested_allclose(a, b, ignore_keys=None,
+                                only_keys=None, **kwargs):
+        errors = {}
+        if isinstance(b, (list, tuple)):
+            assert isinstance(a, type(b))
+            assert len(a) == len(b)
+            for i, (ia, ib) in enumerate(zip(a, b)):
+                try:
+                    _assert_nested_allclose(ia, ib, **kwargs)
+                except AssertionError as e:
+                    if isinstance(e, NestedAssertionError):
+                        for kerr, verr in e.nested.items():
+                            errors[f'{i}->{kerr}'] = verr
+                    else:
+                        errors[f'{i}'] = e.args[0]
+        elif isinstance(b, (dict, OrderedDict)):
+            assert isinstance(a, type(b))
+            a_keys = list(sorted(a.keys()))
+            b_keys = list(sorted(b.keys()))
+            if ignore_keys:
+                a_keys = [k for k in a_keys if k not in ignore_keys]
+                b_keys = [k for k in b_keys if k not in ignore_keys]
+            if only_keys:
+                a_keys = [k for k in a_keys if k in only_keys]
+                b_keys = [k for k in b_keys if k in only_keys]
+            assert a_keys == b_keys
+            for k in b_keys:
+                try:
+                    _assert_nested_allclose(a[k], b[k], **kwargs)
+                except AssertionError as e:
+                    if isinstance(e, NestedAssertionError):
+                        for kerr, verr in e.nested.items():
+                            errors[f'{k}->{kerr}'] = verr
+                    else:
+                        errors[k] = e.args[0]
+        elif isinstance(b, (np.ndarray, float)):
+            assert_allclose(a, b, **kwargs)
+        else:
+            assert a == b
+        if errors:
+            raise NestedAssertionError(errors)
+
+    return _assert_nested_allclose
 
 
 @pytest.fixture(scope="session")

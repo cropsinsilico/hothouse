@@ -1,6 +1,7 @@
 import pytest
 import copy
 import numpy as np
+import traitlets
 from hothouse import scene
 
 
@@ -24,17 +25,36 @@ class TestScene:
     }
 
     @pytest.fixture(scope="class")
+    def instance_type(self):
+        return "base"
+
+    @pytest.fixture(scope="class")
+    def skip_if_not_base(self, instance_type):
+        if instance_type != 'base':
+            pytest.skip("Only enabled for base instance")
+
+    @pytest.fixture(scope="class")
     def tolerances(self):
         return {}
 
     @pytest.fixture(scope="class")
-    def instance_kws(self):
-        return self._instance_kws
+    def instance_kws(self, instance_type):
+        if instance_type == "base":
+            return self._instance_kws
+        raise NotImplementedError(instance_type)
+
+    @pytest.fixture(scope="class", params=["sphere"])
+    def instance_geometry(self, request):
+        return request.param
 
     @pytest.fixture(scope="class")
-    def instance(self, instance_kws, model_sphere):
+    def instance_model(self, geometry_model, instance_geometry):
+        return geometry_model(instance_geometry)
+
+    @pytest.fixture(scope="class")
+    def instance(self, instance_kws, instance_model):
         out = self.cls(**instance_kws)
-        out.add_component(model_sphere)
+        out.add_component(instance_model)
         return out
 
     @pytest.fixture(scope="class")
@@ -48,8 +68,8 @@ class TestScene:
         return out
 
     @pytest.fixture(scope="class")
-    def nface(self, model_sphere):
-        return model_sphere.triangles.shape[0]
+    def nface(self, instance_model):
+        return instance_model.triangles.shape[0]
 
     @pytest.fixture(scope="class")
     def blaster(self, instance):
@@ -63,13 +83,24 @@ class TestScene:
         )
         return out
 
-    def test_attributes(self, instance, nface, assert_allclose):
+    def test_traits_errors(self, skip_if_not_base):
+        r"""Test errors raised for invalid traits."""
+        with pytest.raises(traitlets.TraitError):
+            self.cls(ground=np.zeros((2, )))
+        with pytest.raises(traitlets.TraitError):
+            self.cls(ground=np.zeros((2, 3)))
+        with pytest.raises(traitlets.TraitError):
+            self.cls(ground=np.zeros((3, ), "i4"))
+
+    def test_attributes(self, instance, nface, assert_allclose,
+                        skip_if_not_base):
         r"""Test various attributes."""
         assert instance.ncomponents == 1
-        assert len(instance.transmittance) == 1
-        assert len(instance.reflectance) == 1
-        assert instance.transmittance[0].shape == (nface, )
-        assert instance.reflectance[0].shape == (nface, )
+        assert len(instance.components[0].attributes) == 2
+        assert (instance.components[0].attributes['transmittance'].shape
+                == (nface, ))
+        assert (instance.components[0].attributes['reflectance'].shape
+                == (nface, ))
         assert_allclose(
             instance.limits,
             np.array([
@@ -113,30 +144,68 @@ class TestScene:
                         **tolerances)
 
     def test_compute_count(self, instance, blaster, nface,
-                           expected_results, assert_allclose,
-                           tolerances):
-        result = instance.compute_count(
-            blaster, accumulators={'flux_density': True})
+                           expected_results,
+                           assert_nested_allclose, tolerances):
+        result = instance.compute_count(blaster)
+        actual = {}
         for k, kresult in result.items():
             assert len(kresult) == 1
             assert kresult[0].shape == (nface, )
             if k == 'tfar':
                 idx = (kresult[0] != 1e37)
-                actual = np.array([
+                actual[k] = np.array([
                     kresult[0][idx].sum(), kresult[0][idx].min(),
                     kresult[0][idx].max(),
                     kresult[0][idx].mean()
                 ], "f4")
             else:
-                actual = np.array([
+                actual[k] = np.array([
                     kresult[0].sum(), kresult[0].min(), kresult[0].max(),
                     kresult[0].mean()
                 ], "f8")
-            try:
-                assert_allclose(actual, expected_results[k], **tolerances)
-            except BaseException:
-                print(k)
-                raise
+        assert_nested_allclose(
+            actual, expected_results,
+            ignore_keys=['flux_density', 'solar_ppfd'],
+            **tolerances
+        )
+
+    def test_accumulate_multibounce(self, geometry_scene, blaster,
+                                    assert_nested_allclose,
+                                    tolerances):
+        instance = geometry_scene("pyramid")
+        counts = blaster.compute_count(instance, multibounce=True)
+        accum = scene.CastAccumulator.from_kwargs(
+            'flux', (instance._accumulate_flux, {}))
+        res = {}
+        accum.accumulate(
+            res, 0, instance.components[0], counts,
+            ray_dir=blaster.directions,
+            ray_intensity=blaster.ray_intensity,
+        )
+        res2 = instance.compute_count(
+            blaster, multibounce=True,
+            accumulators={'flux': accum, 'count': False, 'tfar': False},
+        )
+        assert_nested_allclose(res2, res, **tolerances)
+
+        def dummy_func(dst, *args, **kwargs):
+            dst += 1
+
+        res = {}
+        accum2 = scene.CastAccumulator.from_kwargs('dummy', dummy_func)
+        accum2.accumulate(
+            res, 0, instance.components[0], counts,
+            ray_dir=blaster.directions,
+            ray_intensity=blaster.ray_intensity,
+        )
+        assert_nested_allclose(
+            res, {
+                'dummy': {
+                    0: 2 * np.ones(instance.components[0].nface),
+                },
+            },
+            **tolerances
+        )
 
     def test_compute_solar_ppfd(self, instance, nface, location_champaign,
                                 datetime_champaign, expected_results,
@@ -153,22 +222,75 @@ class TestScene:
         assert_allclose(actual, expected_results['solar_ppfd'],
                         **tolerances_solar)
 
+    def test_get_sun_blaster(self, instance, location_champaign,
+                             datetime_champaign, assert_allclose,
+                             tolerances_solar):
+        r"""Test get_sun_blaster method."""
+        blaster = instance.get_sun_blaster(
+            *location_champaign, datetime_champaign("noon"),
+            direct_ppfd=0, diffuse_ppfd=0)
+        assert (blaster.ray_intensity == 0).all()
 
+    @pytest.mark.slow
+    def test_animate_sun(self, tmp_path, geometry_scene, blaster,
+                         location_champaign, skip_if_not_base,
+                         datetime_champaign, altitude_champaign):
+        r"""Test animate_sun method."""
+        # Don't use sphere for this test as multibounce takes a long time
+        instance = geometry_scene("pyramid")
+        anim_dir = tmp_path / "anim"
+        anim_dir.mkdir()
+        fname = anim_dir / "animate_pyramid.html"
+        t_start = datetime_champaign("sunrise")
+        t_stop = datetime_champaign("sunset")
+        n_step = 3
+        anim = instance.animate_sun(
+            blaster, *location_champaign,
+            t_start, t_stop, n_step,
+            altitude=altitude_champaign,
+            multibounce=False,
+            fname=fname,
+        )
+        del anim
+        import matplotlib.pyplot as plt
+        with plt.ion():
+            anim = instance.animate_sun(
+                blaster, *location_champaign,
+                t_start, t_stop, n_step,
+                altitude=altitude_champaign,
+            )
+            del anim
+
+    def test_ipython_display_(self, instance, skip_if_not_base):
+        instance._ipython_display_()
+
+
+@pytest.mark.parametrize("instance_type", ["base", "dont_reflect"],
+                         scope="class")
 class TestPeriodicScene(TestScene):
     r"""Tests for PeriodicScene class."""
 
     cls = scene.PeriodicScene
+    test_animate_sun = None
+    instance_type = None
 
     @pytest.fixture(scope="class")
-    def instance_kws(self):
+    def instance_kws(self, instance_type):
         out = copy.deepcopy(self._instance_kws)
         out['period'] = np.array([10.0, 10.0, 0.0], "f8")
         out['count'] = np.array([1, 1, 0], "i4")
         out['buffer_as_primary'] = True
-        return out
+        if instance_type == 'base':
+            return out
+        if instance_type == 'dont_reflect':
+            out['dont_reflect'] = True
+            out['dont_center'] = True
+            out['count'] *= 2
+            return out
+        raise NotImplementedError(instance_type)
 
     @pytest.fixture(scope="class")
-    def expected_results(self, blaster):
+    def expected_results(self, blaster, instance_type):
         out = dict(
             self._expected_results,
             tfar=np.array([
@@ -187,11 +309,29 @@ class TestPeriodicScene(TestScene):
                 4.9688369e5, 1.246241953, 1.1813491e4, 5.1758716e2
             ], "f8"),
         )
+        if instance_type == 'dont_reflect':
+            out['count'][2] = 20306
+            out.update(
+                tfar=np.array([
+                    31.159254, 0.52852875, 2.378777742, 1.00513732,
+                ], "f8"),
+                flux=np.array([
+                    0.9605579, 0, 0.0709626989, 0.0010005812,
+                ], "f8"),
+                flux_density=np.array([
+                    0.131111456, 0, 0, 0,
+                ], "f8"),
+                solar_ppfd=np.array([
+                    4.09237673e5, 1.24624195, 5.39298144e3, 4.26289242e2
+                ], "f8"),
+            )
         return out
 
     def test_periodic_attributes(self, instance, nface):
         r"""Test various periodic attributes."""
-        assert instance.nperiodic_copies == 8
-        assert instance.ncomponents_periodic == 8
-        assert len(instance.transmittance_periodic) == 9
-        assert len(instance.reflectance_periodic) == 9
+        if instance.dont_reflect:
+            assert instance.nperiodic_copies == 3
+            assert instance.ncomponents_periodic == 3
+        else:
+            assert instance.nperiodic_copies == 8
+            assert instance.ncomponents_periodic == 8

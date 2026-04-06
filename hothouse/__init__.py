@@ -7,7 +7,7 @@ __email__ = "matthewturk@gmail.com"
 
 try:
     from ._version import __version__, __version_tuple__
-except ImportError:
+except ImportError:  # pragma: no cover
     __version__ = "unknown version"
     __version_tuple__ = (0, 0, "unknown version")
 
