@@ -1,11 +1,12 @@
-# cython: language=c++
+# distutils: language=c++
+# distutils: include_dirs = EMBREE_INCLUDE_DIR
 
 cimport numpy as np
 import numpy as np
-from pyembree.callback_handler cimport \
+from embreex.rtcore_geometry cimport RTC_INVALID_GEOMETRY_ID
+from embreex.rtcore_ray cimport RTCRayHit
+from hothouse.callback_handler cimport \
     RayCollisionCallback, CALLBACK_TERMINATE, CALLBACK_CONTINUE
-from pyembree.rtcore_geometry cimport RTC_INVALID_GEOMETRY_ID
-from pyembree.rtcore_ray cimport RTCRayHit
 
 cdef class RayCollisionPrinter(RayCollisionCallback):
     cdef int callback(self, RTCRayHit &ray):
@@ -24,8 +25,9 @@ cdef class RayCollisionMultiBounce(RayCollisionCallback):
     cdef public np.int32_t[:] nbounce
     cdef public np.int32_t[:,:] primID
     cdef public np.int32_t[:,:] geomID
-    cdef public np.int32_t[:,:] instID
-    cdef public np.float32_t[:,:] tfars
+    cdef public np.float32_t[:,:] tfar
+    cdef public np.float32_t[:,:] u
+    cdef public np.float32_t[:,:] v
     cdef public np.float32_t[:,:,:] Ng
     cdef public np.float32_t[:,:,:] ray_dir
     cdef public np.float32_t[:,:] power
@@ -46,8 +48,9 @@ cdef class RayCollisionMultiBounce(RayCollisionCallback):
         self.nbounce = np.zeros(nray, dtype="int32")
         self.primID = -1 * np.ones((nray, maxbounce), dtype="int32")
         self.geomID = -1 * np.ones((nray, maxbounce), dtype="int32")
-        self.instID = -1 * np.ones((nray, maxbounce), dtype="int32")
-        self.tfars = np.empty((nray, maxbounce), dtype="float32")
+        self.tfar = np.empty((nray, maxbounce), dtype="float32")
+        self.u = np.empty((nray, maxbounce), dtype="float32")
+        self.v = np.empty((nray, maxbounce), dtype="float32")
         self.Ng = np.empty((nray, maxbounce, 3), dtype="float32")
         self.ray_dir = np.empty((nray, maxbounce, 3), dtype="float32")
         self.power = np.zeros((nray, maxbounce), dtype="float32")
@@ -83,17 +86,20 @@ cdef class RayCollisionMultiBounce(RayCollisionCallback):
             return 0
         if self.nq >= self.maxbounce:
             raise RuntimeError("Too many rays queued.")
-        cdef int i
-        for i in range(3):
-            self.ray_queue[self.nq].org[i] = org[i]
-            self.ray_queue[self.nq].dir[i] = dir[i]
-        self.ray_queue[self.nq].tnear = 0.0
-        self.ray_queue[self.nq].tfar = 1e37
-        self.ray_queue[self.nq].geomID = RTC_INVALID_GEOMETRY_ID
-        self.ray_queue[self.nq].primID = RTC_INVALID_GEOMETRY_ID
-        self.ray_queue[self.nq].instID = RTC_INVALID_GEOMETRY_ID
-        self.ray_queue[self.nq].mask = -1
-        self.ray_queue[self.nq].time = 0
+        self.ray_queue[self.nq].ray.org_x = org[0]
+        self.ray_queue[self.nq].ray.org_y = org[1]
+        self.ray_queue[self.nq].ray.org_z = org[2]
+        self.ray_queue[self.nq].ray.dir_x = dir[0]
+        self.ray_queue[self.nq].ray.dir_y = dir[1]
+        self.ray_queue[self.nq].ray.dir_z = dir[2]
+        self.ray_queue[self.nq].ray.tnear = 0.0
+        self.ray_queue[self.nq].ray.tfar = 1e37
+        self.ray_queue[self.nq].ray.id = RTC_INVALID_GEOMETRY_ID
+        self.ray_queue[self.nq].hit.geomID = RTC_INVALID_GEOMETRY_ID
+        self.ray_queue[self.nq].hit.primID = RTC_INVALID_GEOMETRY_ID
+        self.ray_queue[self.nq].hit.instID[0] = RTC_INVALID_GEOMETRY_ID
+        self.ray_queue[self.nq].ray.mask = -1
+        self.ray_queue[self.nq].ray.time = 0
         self.power_queue[self.nq] = power
         self.nq += 1
         return 0
@@ -114,9 +120,10 @@ cdef class RayCollisionMultiBounce(RayCollisionCallback):
         
         ray.ray.tnear = self.ray_queue[self.nq].ray.tnear
         ray.ray.tfar = self.ray_queue[self.nq].ray.tfar
-        ray.hit.geomID = self.ray_queue[self.nq].rayhit.geomID
-        ray.hit.primID = self.ray_queue[self.nq].rayhit.primID
-        ray.hit.instID[0] = self.ray_queue[self.nq].rayhit.instID[0]
+        ray.ray.id = self.ray_queue[self.nq].ray.id
+        ray.hit.geomID = self.ray_queue[self.nq].hit.geomID
+        ray.hit.primID = self.ray_queue[self.nq].hit.primID
+        ray.hit.instID[0] = self.ray_queue[self.nq].hit.instID[0]
         ray.ray.mask = self.ray_queue[self.nq].ray.mask
         ray.ray.time = self.ray_queue[self.nq].ray.time
         return self.power_queue[self.nq]
@@ -126,7 +133,8 @@ cdef class RayCollisionMultiBounce(RayCollisionCallback):
         # dependency or subsurface reflection
         cdef int i
         cdef float nu, ux, uy, uz
-        cdef float new_org[3], new_dir[3]
+        cdef float new_org[3]
+        cdef float new_dir[3]
 	# Move origin to point of intersection
         new_org[0] = ray.ray.org_x + ray.ray.dir_x * ray.ray.tfar
         new_org[1] = ray.ray.org_y + ray.ray.dir_y * ray.ray.tfar
@@ -156,7 +164,8 @@ cdef class RayCollisionMultiBounce(RayCollisionCallback):
     cdef void transmit_ray(self, RTCRayHit &ray, float power):
         # TODO: Refraction
         cdef int i
-        cdef float new_org[3], new_dir[3]
+        cdef float new_org[3]
+        cdef float new_dir[3]
 	# Move origin to point of intersection
         new_org[0] = ray.ray.org_x + ray.ray.dir_x * ray.ray.tfar
         new_org[1] = ray.ray.org_y + ray.ray.dir_y * ray.ray.tfar
@@ -174,8 +183,9 @@ cdef class RayCollisionMultiBounce(RayCollisionCallback):
         out = {'nbounce': np.asarray(self.nbounce),
                'primID': np.asarray(self.primID),
                'geomID': np.asarray(self.geomID),
-               'instID': np.asarray(self.instID),
-               'tfars': np.asarray(self.tfars),
+               'tfar': np.asarray(self.tfar),
+               'u': np.asarray(self.u),
+               'v': np.asarray(self.v),
                'Ng': np.asarray(self.Ng),
                'ray_dir': np.asarray(self.ray_dir),
                'power': np.asarray(self.power)}
@@ -204,8 +214,9 @@ cdef class RayCollisionMultiBounce(RayCollisionCallback):
         self.nbounce[self.iray] += 1
         self.primID[self.iray, idx] = ray.hit.primID
         self.geomID[self.iray, idx] = ray.hit.geomID
-        self.instID[self.iray, idx] = ray.hit.instID[0]
-        self.tfars[self.iray, idx] = ray.ray.tfar
+        self.tfar[self.iray, idx] = ray.ray.tfar
+        self.u[self.iray, idx] = ray.hit.u
+        self.v[self.iray, idx] = ray.hit.v
         self.Ng[self.iray, idx, 0] = ray.hit.Ng_x
         self.Ng[self.iray, idx, 1] = ray.hit.Ng_y
         self.Ng[self.iray, idx, 2] = ray.hit.Ng_z

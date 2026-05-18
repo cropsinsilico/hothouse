@@ -66,9 +66,9 @@ Ready to contribute? Here's how to set up `hothouse` for local development.
 
 3. Install your local copy into a virtualenv. Assuming you have virtualenvwrapper installed, this is how you set up your fork for local development::
 
-    $ mkvirtualenv hothouse
+    $ virtualenv hothouse
     $ cd hothouse/
-    $ python setup.py develop
+    $ pip install -e '.[dev]'
 
 4. Create a branch for local development::
 
@@ -80,8 +80,8 @@ Ready to contribute? Here's how to set up `hothouse` for local development.
    tests, including testing other Python versions with tox::
 
     $ flake8 hothouse tests
-    $ python setup.py test or py.test
-    $ tox
+    $ python -m pytest
+    $ python -m tox
 
    To get flake8 and tox, just pip install them into your virtualenv.
 
@@ -111,7 +111,7 @@ Tips
 
 To run a subset of tests::
 
-$ py.test tests.test_hothouse
+$ pytest tests/test_hothouse.py
 
 
 Deploying

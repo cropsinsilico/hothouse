@@ -8,7 +8,7 @@ Welcome to hothouse's documentation!
    readme
    installation
    usage
-   modules
+   hothouse
    contributing
    authors
    history
