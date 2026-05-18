@@ -13,7 +13,7 @@ env:
 
 jobs:
   build_sdist:
-    name: Build sdist
+    name: Build sdist & wheel
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -36,6 +36,7 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
 
+  # This will be required if any Cython code is included
   # build_wheels:
   #   name: Build wheels on ${{matrix.arch}} for ${{ matrix.os }}
   #   runs-on: ${{ matrix.os }}

@@ -6,11 +6,11 @@ hothouse
 .. image:: https://img.shields.io/pypi/v/hothouse.svg
         :target: https://pypi.python.org/pypi/hothouse
 
-.. image:: https://img.shields.io/travis/matthewturk/hothouse.svg
-        :target: https://travis-ci.org/matthewturk/hothouse
+.. image:: https://github.com/cropsinsilico/hothouse/actions/workflows/runtests.yml/badge.svg?branch=master
+        :target: https://github.com/cropsinsilico/hothouse/actions
 
-.. image:: https://readthedocs.org/projects/hothouse/badge/?version=latest
-        :target: https://hothouse.readthedocs.io/en/latest/?badge=latest
+.. image:: https://github.com/cropsinsilico/hothouse/actions/workflows/publish-docs.yml/badge.svg?branch=master
+        :target: https://cropsinsilico.github.io/hothouse
         :alt: Documentation Status
 
 
@@ -20,13 +20,16 @@ Embree-based ray tracer for photosynthetic yields in plant canopies
 
 
 * Free software: MIT license
-* Documentation: https://hothouse.readthedocs.io.
+* Documentation: https://cropsinsilico.github.io/hothouse
 
 
 Features
 --------
 
-* TODO
+* Multi-bounce ray tracing based on surface reflectance/transmittance
+* Ray geometry/intensity based on solar model for a given time & location
+* Per-component collision tracking
+* Support for different ray geometries: orthographic, projection, spherical
 
 Credits
 -------
