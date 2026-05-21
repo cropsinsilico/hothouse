@@ -11,8 +11,6 @@ import hothouse
 from hothouse import cli
 from hothouse.datasets import PLANTS
 
-import numpy as np
-
 
 @pytest.fixture
 def response():
@@ -43,7 +41,7 @@ def test_command_line_interface():
 
 def test_load_soy():
     fname = PLANTS.fetch("fullSoy_2-12a.ply")
-    p = hothouse.plant_model.PlantModel.from_ply(fname)
+    p = hothouse.model.Model.from_ply(fname)
     assert p.triangles.shape == (8584, 3, 3)
 
     # Now we will test translation

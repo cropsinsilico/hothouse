@@ -1,0 +1,183 @@
+# [bdist_wheel]
+# universal = 1
+
+[build-system]
+requires = [
+  "setuptools >= 61.0",
+  "setuptools_scm",
+  # Only required if building cython extension
+  # "Cython>=0.29.20",
+  # "numpy>=1.13.0",
+  # "embreex>=4.0.0rc0",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hothouse"
+dynamic = [
+  "version",
+  "readme",
+]
+dependencies = [
+    "Click>=6.0",
+    "embreex>=4.0.0",
+    "pooch>=0.3.1",
+    "plyfile>=0.7",
+    "matplotlib",
+    "numpy>=1.13.0",
+    "traitlets>=4.3.3",
+    "traittypes>=0.2.1",
+    "pvlib>=0.7.2",
+    "tables>=3.6.1",
+    "pythreejs>=2.2.0",
+    "pywavefront",
+]
+
+description = "Embree-based ray tracer for photosynthetic yields in plant canopies"
+license-files = ["LICEN[CS]E*"]
+license = "MIT"
+keywords = [
+  "hothouse"
+]
+authors = [
+  { name="Matthew Turk", email="matthewturk@gmail.com" },
+  { name="Meagan Lang", email="langmm.astro@gmail.com" },
+]
+maintainers = [
+  { name="Matthew Turk", email="matthewturk@gmail.com" },
+  { name="Meagan Lang", email="langmm.astro@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+requires-python = ">= 3.10"
+
+# [project.scripts]
+# hothouse = "hothouse.cli:main"
+[project.entry-points]
+console_scripts = { hothouse="hothouse.cli:main" }
+
+[project.urls]
+Homepage = "https://github.com/matthewturk/hothouse"
+Documentation = "https://github.com/matthewturk/hothouse"
+Repository = "https://github.com/matthewturk/hothouse"
+Issues = "https://github.com/matthewturk/hothouse/issues"
+Changelog = "https://github.com/matthewturk/hothouse/blob/main/HISTORY.rst"
+
+[project.optional-dependencies]
+dev = [
+  'flake8',
+  'pytest',
+  'pytest-cov',
+  'pytz',
+  'sphinx',
+  'tox',
+]
+
+[tool.setuptools]
+include-package-data = true
+packages = ["hothouse"]
+
+[tool.setuptools_scm]
+# git_describe_command = "git describe --tags --long"
+version_file = "hothouse/_version.py"
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.rst", "HISTORY.rst"]}
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+norecursedirs = [
+  ".*", "build", "dist", "CVS", "_darcs", "{arch}", "*.egg",
+]
+testpaths = "tests" 
+filterwarnings = [
+  "error",
+  # Deprecation warnings caused by import of dependencies
+  "ignore::DeprecationWarning:importlib.*",
+  "ignore:((.|\n)*)Sentinel is not a public part of the traitlets API((.|\n)*):DeprecationWarning:traitlets.*",
+  # "ignore:((.|\n)*)was set from the constructor((.|\n)*):DeprecationWarning:traitlets.*",
+  "ignore:((.|\n)*)was set from the constructor((.|\n)*):DeprecationWarning",
+  "ignore:((.|\n)*)Animation was deleted without rendering anything((.|\n)*):UserWarning:matplotlib.*:",
+]
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.coverage.run]
+omit = [
+  # "*/python?.?/*",
+  "*/lib-python/?.?/*.py",
+  "*/lib_pypy/_*.py",
+  "*/site-packages/ordereddict.py",
+  "*/site-packages/nose/*",
+  "*/unittest2/*",
+]
+
+[tool.coverage.report]
+sort = "Cover"
+ignore_errors = true
+show_missing = true
+exclude_lines = [
+  "pragma: Python 3.8",
+  "pragma: no cover",
+  "pragma: debug",
+  "pragma: in progress",
+  "pragma: config",
+  "pragma: completion",
+  "pragma: testing",
+  "pragma: version",
+  "pragma: intermittent",
+  "pragma: deprecated",
+  "pragma: extern",
+  "def __repr__",
+  "def description_prefix",
+  "if 0:",
+  "if False:",
+  "if __name__ == .__main__.:",
+]
+
+[tool.tox]
+env_list = [
+  "py3{10-14}",
+]
+skip_missing_interpreters = true
+
+[tool.tox.env_run_base]
+dependency_groups = [ "dev" ]
+commands = [[ "pytest" ]]
+
+[tool.cibuildwheel]
+test-requires = ["pytest", "pytz"]
+test-command = "pytest -m {project}/tests"
+# Based on embreex values
+skip = "*i686 *-win32 *musllinux*"
+manylinux-x86_64-image = "manylinux_2_28"
+
+[tool.black]
+line-length = 88
+target-version = ['py310', 'py311', 'py312', 'py313', 'py314']
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | _version\.py
+)/
+'''
+

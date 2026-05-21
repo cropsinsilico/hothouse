@@ -1,3 +1,10 @@
+# Generated version
+
+_version.py
+
+# Generated cython files
+hothouse/*.cpp
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

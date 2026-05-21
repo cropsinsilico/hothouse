@@ -4,13 +4,16 @@
 
 __author__ = """Matthew Turk"""
 __email__ = "matthewturk@gmail.com"
-__version__ = "0.1.0"
 
-from ._version import get_versions
+try:
+    from ._version import __version__, __version_tuple__
+except ImportError:  # pragma: no cover
+    __version__ = "unknown version"
+    __version_tuple__ = (0, 0, "unknown version")
 
-__version__ = get_versions()["version"]
-del get_versions
-
-from .plant_model import PlantModel
+from .model import Model
 from .blaster import OrthographicRayBlaster, SunRayBlaster
 from .scene import Scene
+
+
+__all__ = ["Scene", "Model", "OrthographicRayBlaster", "SunRayBlaster"]

@@ -15,7 +15,7 @@ Types of Contributions
 Report Bugs
 ~~~~~~~~~~~
 
-Report bugs at https://github.com/matthewturk/hothouse/issues.
+Report bugs at https://github.com/cropsinsilico/hothouse/issues.
 
 If you are reporting a bug, please include:
 
@@ -45,7 +45,7 @@ articles, and such.
 Submit Feedback
 ~~~~~~~~~~~~~~~
 
-The best way to send feedback is to file an issue at https://github.com/matthewturk/hothouse/issues.
+The best way to send feedback is to file an issue at https://github.com/cropsinsilico/hothouse/issues.
 
 If you are proposing a feature:
 
@@ -66,9 +66,9 @@ Ready to contribute? Here's how to set up `hothouse` for local development.
 
 3. Install your local copy into a virtualenv. Assuming you have virtualenvwrapper installed, this is how you set up your fork for local development::
 
-    $ mkvirtualenv hothouse
+    $ virtualenv hothouse
     $ cd hothouse/
-    $ python setup.py develop
+    $ pip install -e '.[dev]'
 
 4. Create a branch for local development::
 
@@ -80,8 +80,8 @@ Ready to contribute? Here's how to set up `hothouse` for local development.
    tests, including testing other Python versions with tox::
 
     $ flake8 hothouse tests
-    $ python setup.py test or py.test
-    $ tox
+    $ python -m pytest
+    $ python -m tox
 
    To get flake8 and tox, just pip install them into your virtualenv.
 
@@ -102,8 +102,8 @@ Before you submit a pull request, check that it meets these guidelines:
 2. If the pull request adds functionality, the docs should be updated. Put
    your new functionality into a function with a docstring, and add the
    feature to the list in README.rst.
-3. The pull request should work for Python 2.7, 3.4, 3.5 and 3.6, and for PyPy. Check
-   https://travis-ci.org/matthewturk/hothouse/pull_requests
+3. The pull request should work for Python 3.10, 3.11, 3.12, 3.13 and 3.14, and for PyPy. Check
+   https://github.com/cropsinsilico/hothouse/actions
    and make sure that the tests pass for all supported Python versions.
 
 Tips
@@ -111,18 +111,16 @@ Tips
 
 To run a subset of tests::
 
-$ py.test tests.test_hothouse
+$ pytest tests/test_hothouse.py
 
 
 Deploying
 ---------
 
 A reminder for the maintainers on how to deploy.
-Make sure all your changes are committed (including an entry in HISTORY.rst).
-Then run::
+Make sure all your changes are committed and pushed to GitHub (including an entry in HISTORY.rst) and that the tests are passing in the `runtests.yml` GitHub action.
+Then create a release on GitHub.
 
-$ bumpversion patch # possible: major / minor / patch
-$ git push
-$ git push --tags
+The `publish-to-pypi.yml` GitHub action will then deploy to PyPI.
 
-Travis will then deploy to PyPI if tests pass.
+Documentation will be rebuilt & deployed to GitHub pages whenever code is pushed to the default branch (or when manually triggered).

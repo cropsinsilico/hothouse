@@ -2,17 +2,32 @@
 #
 
 # You can set these variables from the command line.
-SPHINXOPTS    =
-SPHINXBUILD   = python -msphinx
+SPHINXOPTS    ?=
+SPHINXBUILD   ?= sphinx-build
 SPHINXPROJ    = hothouse
-SOURCEDIR     = .
-BUILDDIR      = _build
+SOURCEDIR     = source
+BUILDDIR      = build
+REPODIR       = ../../hothouse_docs
 
 # Put it first so that "make" without argument is like "make help".
 help:
 	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 .PHONY: help Makefile
+
+.PHONY: clean ghpages
+ghpages: autodoc
+	cp -a $(BUILDDIR)/html/. $(REPODIR)/
+	cd $(REPODIR) ; git pull ; git add . ; git commit -m "rebuilt docs" ; git push origin gh-pages
+
+.PHONY: autodoc
+autodoc: sphinx
+	make html
+
+.PHONY: sphinx
+sphinx:
+	sphinx-apidoc -fT -o $(SOURCEDIR)/ ../hothouse
+
 
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).

@@ -4,7 +4,10 @@ import pooch
 from . import __version__
 
 _registry = {
-    "fullSoy_2-12a.ply": "e12f192188058851289f0531dc456c6df31b562405b77e382e0f9e4b1c899108"
+    "fullSoy_2-12a.ply": (
+        "e12f192188058851289f0531dc456c6df31b562405b77e382e0f"
+        "9e4b1c899108"
+    )
 }
 
 PLANTS = pooch.create(
