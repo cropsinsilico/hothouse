@@ -44,6 +44,9 @@ jobs:
 
   deploy:
     name: Deploy the docs to GitHub pages
+    permissions:
+      pages: write       # Added for GitHub Pages deployment
+      id-token: write    # Necessary for actions/deploy-pages
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
