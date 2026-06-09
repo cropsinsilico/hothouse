@@ -38,3 +38,12 @@ This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypack
 
 .. _Cookiecutter: https://github.com/audreyr/cookiecutter
 .. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
+
+Funding
+-------
+
+This work was supported by funding from the Foundation for Food and Agriculture Research (FFAR) through Grant
+515760 and Cost Share C2252 with the Institute for Sustainability, Energy, and Environment (iSEE) and the
+National Center for Supercomputing Applications (NCSA) at the University of Illinois at Urbana-Champaign (UIUC),
+the Gordon and Betty Moore Foundation’s DataDriven Discovery Initiative through Grant GBMF4561 to
+Matthew Turk, and the CROPPS NSF STC (Grant No. DBI-2019674).
