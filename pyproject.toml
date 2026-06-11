@@ -66,15 +66,16 @@ requires-python = ">= 3.10"
 console_scripts = { hothouse="hothouse.cli:main" }
 
 [project.urls]
-Homepage = "https://github.com/matthewturk/hothouse"
-Documentation = "https://github.com/matthewturk/hothouse"
-Repository = "https://github.com/matthewturk/hothouse"
-Issues = "https://github.com/matthewturk/hothouse/issues"
-Changelog = "https://github.com/matthewturk/hothouse/blob/main/HISTORY.rst"
+Homepage = "https://github.com/cropsinsilico/hothouse"
+Documentation = "https://cropsinsilico.github.io/hothouse"
+Repository = "https://github.com/cropsinsilico/hothouse"
+Issues = "https://github.com/cropsinsilico/hothouse/issues"
+Changelog = "https://github.com/cropsinsilico/hothouse/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
   'flake8',
+  'git-changelog',
   'pytest',
   'pytest-cov',
   'pytz',
@@ -181,3 +182,8 @@ exclude = '''
 )/
 '''
 
+[tool.git-changelog]
+template = "keepachangelog"
+bump = "auto"
+output = "CHANGELOG.md"
+# in-place = true
