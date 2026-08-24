@@ -32,13 +32,13 @@ You can either clone the public repository:
 
 .. code-block:: console
 
-    $ git clone git://github.com/matthewturk/hothouse
+    $ git clone git://github.com/cropsinsilico/hothouse
 
 Or download the `tarball`_:
 
 .. code-block:: console
 
-    $ curl  -OL https://github.com/matthewturk/hothouse/tarball/master
+    $ curl  -OL https://github.com/cropsinsilico/hothouse/tarball/main
 
 Once you have a copy of the source, you can install it with:
 
@@ -47,5 +47,5 @@ Once you have a copy of the source, you can install it with:
     $ pip install .
 
 
-.. _Github repo: https://github.com/matthewturk/hothouse
-.. _tarball: https://github.com/matthewturk/hothouse/tarball/master
+.. _Github repo: https://github.com/cropsinsilico/hothouse
+.. _tarball: https://github.com/cropsinsilico/hothouse/tarball/main

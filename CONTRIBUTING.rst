@@ -118,7 +118,7 @@ Deploying
 ---------
 
 A reminder for the maintainers on how to deploy.
-Make sure all your changes are committed and pushed to GitHub (including an entry in HISTORY.rst) and that the tests are passing in the `runtests.yml` GitHub action.
+Make sure all your changes are committed and pushed to GitHub (including an entry in CHANGELOG.md) and that the tests are passing in the `runtests.yml` GitHub action.
 Then create a release on GitHub.
 
 The `publish-to-pypi.yml` GitHub action will then deploy to PyPI.

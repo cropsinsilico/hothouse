@@ -22,50 +22,60 @@ class TestModel:
     cls = model.Model
 
     @pytest.fixture(scope="class")
-    def skip_if_not_triangles(self, instance_type):
+    @classmethod
+    def skip_if_not_triangles(cls, instance_type):
         if instance_type != "triangles":
             pytest.skip("Only enabled for first instance type")
 
     @pytest.fixture(scope="class")
-    def nface(self):
+    @classmethod
+    def nface(cls):
         return 5
 
     @pytest.fixture(scope="class")
-    def triangles(self, nface):
+    @classmethod
+    def triangles(cls, nface):
         return np.arange(nface * 3 * 3, dtype="f8").reshape(nface, 3, 3)
 
     @pytest.fixture(scope="class")
-    def vertices(self, triangles, nface):
+    @classmethod
+    def vertices(cls, triangles, nface):
         return triangles.reshape(nface * 3, 3)
 
     @pytest.fixture(scope="class")
-    def indices(self, nface):
+    @classmethod
+    def indices(cls, nface):
         return np.arange(nface * 3, dtype="i4").reshape(nface, 3)
 
     @pytest.fixture(scope="class")
-    def vertex_colors(self, nface):
+    @classmethod
+    def vertex_colors(cls, nface):
         out = np.zeros((nface * 3, 3), "i4")
         out[-3:, :] = [255, 0, 0]
         return out
 
     @pytest.fixture(scope="class")
-    def face_colors(self, nface):
+    @classmethod
+    def face_colors(cls, nface):
         out = np.zeros((nface, 3), "i4")
         out[-1, :] = [255, 0, 0]
         return out
 
     @pytest.fixture(scope="class")
-    def instance_triangles(self, triangles, face_colors):
-        return self.cls(triangles=triangles,
-                        attributes={"colors": face_colors})
+    @classmethod
+    def instance_triangles(cls, triangles, face_colors):
+        return cls.cls(triangles=triangles,
+                       attributes={"colors": face_colors})
 
     @pytest.fixture(scope="class")
-    def instance_indices(self, indices, vertices, vertex_colors):
-        return self.cls(vertices=vertices, indices=indices,
-                        attributes={"vertex_colors": vertex_colors})
+    @classmethod
+    def instance_indices(cls, indices, vertices, vertex_colors):
+        return cls.cls(vertices=vertices, indices=indices,
+                       attributes={"vertex_colors": vertex_colors})
 
     @pytest.fixture(scope="class")
-    def create_instance(self, instance_type,
+    @classmethod
+    def create_instance(cls, instance_type,
                         triangles, indices, vertices,
                         vertex_colors, face_colors):
 
@@ -75,7 +85,7 @@ class TestModel:
                     {} if no_colors
                     else {"colors": face_colors}
                 )
-                return self.cls(
+                return cls.cls(
                     triangles=triangles,
                     attributes=attributes,
                     vertex_normals=None,
@@ -85,7 +95,7 @@ class TestModel:
                     {} if no_colors
                     else {"vertex_colors": vertex_colors}
                 )
-                return self.cls(
+                return cls.cls(
                     vertices=vertices, indices=indices,
                     attributes=attributes,
                     vertex_normals=None,
@@ -94,7 +104,8 @@ class TestModel:
         return _create_instance
 
     @pytest.fixture(scope="class")
-    def instance(self, create_instance):
+    @classmethod
+    def instance(cls, create_instance):
         return create_instance()
 
     @pytest.fixture

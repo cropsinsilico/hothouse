@@ -1,0 +1,76 @@
+[workspace]
+name = "hothouse"
+version = "0.1.0"
+description = "Embree-based ray tracer for photosynthetic yields in plant canopies"
+authors = ["Meagan Lang <langmm.astro@gmail.com>"]
+channels = ["conda-forge"]
+platforms = ["osx-64", "osx-arm64", "linux-64", "win-64"]
+
+[dependencies]
+python = ">=3.10,<3.15"
+Click = ">=6.0"
+plyfile = ">=0.7"
+pooch = ">=0.3.1"
+pvlib = ">=0.7.2"
+pythreejs = ">=2.2.0"
+matplotlib = "*"
+numpy = ">=1.13.0"
+traitlets = ">=4.3.3"
+traittypes = ">=0.2.1"
+
+[pypi-dependencies]
+hothouse = { path = ".", editable = true }
+embreex = ">=4.0.0"
+pywavefront = "*"
+
+[feature.dev.dependencies]
+conda-index = "*"
+flake8 = "*"
+git-changelog = "*"
+myst-parser = "*"
+pytest = "*"
+pytest-cov = "*"
+pytz = "*"
+python-build = "*"
+sphinx = "*"
+tox = "*"
+
+[feature.dev.tasks]
+test = { cmd = "pytest", description = "Run the test suite" }
+lint = { cmd = "flake8 hothouse tests", description = "Lint the codebase" }
+docs = { cmd = "sphinx-build docs/source docs/_build", description = "Build the documentation" }
+changelog = {
+    cmd = "git-changelog",
+    description = "Update the change log"
+}
+build-conda = {
+    cmd = "pixi publish --path recipe --target-dir build",
+    description = "Build the conda package with pixi publish"
+}
+
+[feature.py310.dependencies]
+python = "3.10.*"
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py313.dependencies]
+python = "3.13.*"
+sphinx = ">=8.2.3"
+
+[feature.py314.dependencies]
+python = "3.14.*"
+sphinx = ">=8.2.3"
+
+[environments]
+py310 = ["dev", "py310"]
+py311 = ["dev", "py311"]
+py312 = ["dev", "py312"]
+py313 = ["dev", "py313"]
+py314 = ["dev", "py314"]
+default = ["dev", "py313"]
+dev = ["dev", "py313"]
+prod = ["py313"]

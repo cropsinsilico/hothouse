@@ -12,6 +12,7 @@ Welcome to hothouse's documentation!
    contributing
    authors
    history
+   dev
 
 Indices and tables
 ==================

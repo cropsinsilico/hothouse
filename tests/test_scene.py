@@ -25,42 +25,50 @@ class TestScene:
     }
 
     @pytest.fixture(scope="class")
-    def instance_type(self):
+    @classmethod
+    def instance_type(cls):
         return "base"
 
     @pytest.fixture(scope="class")
-    def skip_if_not_base(self, instance_type):
+    @classmethod
+    def skip_if_not_base(cls, instance_type):
         if instance_type != 'base':
             pytest.skip("Only enabled for base instance")
 
     @pytest.fixture(scope="class")
-    def tolerances(self):
+    @classmethod
+    def tolerances(cls):
         return {}
 
     @pytest.fixture(scope="class")
-    def instance_kws(self, instance_type):
+    @classmethod
+    def instance_kws(cls, instance_type):
         if instance_type == "base":
-            return self._instance_kws
+            return cls._instance_kws
         raise NotImplementedError(instance_type)
 
     @pytest.fixture(scope="class", params=["sphere"])
-    def instance_geometry(self, request):
+    @classmethod
+    def instance_geometry(cls, request):
         return request.param
 
     @pytest.fixture(scope="class")
-    def instance_model(self, geometry_model, instance_geometry):
+    @classmethod
+    def instance_model(cls, geometry_model, instance_geometry):
         return geometry_model(instance_geometry)
 
     @pytest.fixture(scope="class")
-    def instance(self, instance_kws, instance_model):
-        out = self.cls(**instance_kws)
+    @classmethod
+    def instance(cls, instance_kws, instance_model):
+        out = cls.cls(**instance_kws)
         out.add_component(instance_model)
         return out
 
     @pytest.fixture(scope="class")
-    def expected_results(self, blaster):
+    @classmethod
+    def expected_results(cls, blaster):
         out = dict(
-            self._expected_results,
+            cls._expected_results,
             count=np.array([
                 blaster.nx * blaster.ny, 0, 9945, 273.066667
             ], "f8"),
@@ -68,11 +76,13 @@ class TestScene:
         return out
 
     @pytest.fixture(scope="class")
-    def nface(self, instance_model):
+    @classmethod
+    def nface(cls, instance_model):
         return instance_model.triangles.shape[0]
 
     @pytest.fixture(scope="class")
-    def blaster(self, instance):
+    @classmethod
+    def blaster(cls, instance):
         from hothouse import blaster
         out = blaster.OrthographicRayBlaster(
             forward=-instance.up,
@@ -275,8 +285,9 @@ class TestPeriodicScene(TestScene):
     instance_type = None
 
     @pytest.fixture(scope="class")
-    def instance_kws(self, instance_type):
-        out = copy.deepcopy(self._instance_kws)
+    @classmethod
+    def instance_kws(cls, instance_type):
+        out = copy.deepcopy(cls._instance_kws)
         out['period'] = np.array([10.0, 10.0, 0.0], "f8")
         out['count'] = np.array([1, 1, 0], "i4")
         out['buffer_as_primary'] = True
@@ -290,9 +301,10 @@ class TestPeriodicScene(TestScene):
         raise NotImplementedError(instance_type)
 
     @pytest.fixture(scope="class")
-    def expected_results(self, blaster, instance_type):
+    @classmethod
+    def expected_results(cls, blaster, instance_type):
         out = dict(
-            self._expected_results,
+            cls._expected_results,
             tfar=np.array([
                 28.76002, 0.52852875, 1.2916243, 0.95866734
             ], "f4"),

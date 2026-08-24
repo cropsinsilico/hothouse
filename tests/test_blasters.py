@@ -66,20 +66,24 @@ class TestRayBlaster:
     _flux_density_result = 0.08896797
 
     @pytest.fixture(scope="class")
-    def instance_type(self):
+    @classmethod
+    def instance_type(cls):
         return "base"
 
     @pytest.fixture(scope="class")
-    def skip_if_not_base(self, instance_type):
+    @classmethod
+    def skip_if_not_base(cls, instance_type):
         if instance_type != 'base':
             pytest.skip("Only enabled for base instance")
 
     @pytest.fixture(scope="class", params=["pyramid"])
-    def scene_geometry(self, request):
+    @classmethod
+    def scene_geometry(cls, request):
         return request.param
 
     @pytest.fixture(scope="class")
-    def scene_instance(self, scene_geometry, geometry_scene):
+    @classmethod
+    def scene_instance(cls, scene_geometry, geometry_scene):
         return geometry_scene(scene_geometry)
 
     @pytest.fixture
@@ -88,55 +92,66 @@ class TestRayBlaster:
         return self._flux_density_result
 
     @pytest.fixture(scope="class")
-    def tolerances(self):
+    @classmethod
+    def tolerances(cls):
         return {}
 
     @pytest.fixture(scope="class")
-    def intersection_width(self, intersection_radius):
+    @classmethod
+    def intersection_width(cls, intersection_radius):
         return np.sqrt(2 * (intersection_radius * intersection_radius))
 
     @pytest.fixture(scope="class")
-    def intersection_radius(self):
+    @classmethod
+    def intersection_radius(cls):
         return 0.25
 
     @pytest.fixture(scope="class")
-    def camera_distance(self):
+    @classmethod
+    def camera_distance(cls):
         return 4.0
 
     @pytest.fixture(scope="class")
-    def fov_width(self, intersection_width, camera_distance):
+    @classmethod
+    def fov_width(cls, intersection_width, camera_distance):
         return np.degrees(
             2.0 * sun_calc.stable_arctan((intersection_width / 2.0)
                                          / camera_distance))
 
     @pytest.fixture(scope="class")
-    def fov_radius(self, intersection_radius, camera_distance):
+    @classmethod
+    def fov_radius(cls, intersection_radius, camera_distance):
         return np.degrees(
             sun_calc.stable_arctan(intersection_radius
                                    / camera_distance))
 
     @pytest.fixture(scope="class")
-    def angle_side(self, scene_instance):
+    @classmethod
+    def angle_side(cls, scene_instance):
         r"""Elevation angle of pyramid side from horizontal xy plane."""
         return np.degrees(sun_calc.stable_arctan(1.6 / 0.5))
 
     @pytest.fixture(scope="class")
-    def reorder_rays(self):
-        return self._reorder_rays
+    @classmethod
+    def reorder_rays(cls):
+        return cls._reorder_rays
 
     @pytest.fixture(scope="class")
-    def instance_kws_base(self):
-        return self._instance_kws
+    @classmethod
+    def instance_kws_base(cls):
+        return cls._instance_kws
 
     @pytest.fixture(scope="class")
-    def instance_kws(self, instance_type, instance_kws_base):
+    @classmethod
+    def instance_kws(cls, instance_type, instance_kws_base):
         if instance_type == "base":
             return instance_kws_base
         raise NotImplementedError(instance_type)
 
     @pytest.fixture(scope="class")
-    def instance_base(self, instance_kws_base, reorder_rays):
-        out = self.cls(**instance_kws_base)
+    @classmethod
+    def instance_base(cls, instance_kws_base, reorder_rays):
+        out = cls.cls(**instance_kws_base)
         # print(out.origins)
         # print(out.directions)
         # if reorder_rays is not None:
@@ -145,8 +160,9 @@ class TestRayBlaster:
         return out
 
     @pytest.fixture(scope="class")
-    def instance(self, instance_kws, reorder_rays):
-        out = self.cls(**instance_kws)
+    @classmethod
+    def instance(cls, instance_kws, reorder_rays):
+        out = cls.cls(**instance_kws)
         # print(out.origins)
         # print(out.directions)
         # if reorder_rays is not None:
@@ -155,21 +171,24 @@ class TestRayBlaster:
         return out
 
     @pytest.fixture(scope="class")
-    def expected_result(self):
-        return self._expected_result
+    @classmethod
+    def expected_result(cls):
+        return cls._expected_result
 
     @pytest.fixture(scope="class")
-    def expected_attributes(self, instance):
+    @classmethod
+    def expected_attributes(cls, instance):
         out = {
             k: np.empty(instance.nray)
-            for k in self._expected_attributes.keys()
+            for k in cls._expected_attributes.keys()
         }
-        for k, v in self._expected_attributes.items():
+        for k, v in cls._expected_attributes.items():
             out[k].fill(v)
         return out
 
     @pytest.fixture(scope="class")
-    def get_results_empty(self, instance):
+    @classmethod
+    def get_results_empty(cls, instance):
 
         nray = instance.nray
 
@@ -186,7 +205,7 @@ class TestRayBlaster:
                 'v': np.empty((nray, nbounce), "f4"),
             }
             for k, v in out.items():
-                v.fill(self.cls._null_field_values.get(k, 0))
+                v.fill(cls.cls._null_field_values.get(k, 0))
             if flatten:
                 for k in list(out.keys()):
                     out[k] = out[k].reshape(nray, -1)
@@ -203,11 +222,13 @@ class TestRayBlaster:
         return _get_results_empty
 
     @pytest.fixture(scope="class")
-    def expected_bounces(self, expected_bounces_base):
+    @classmethod
+    def expected_bounces(cls, expected_bounces_base):
         return expected_bounces_base
 
     @pytest.fixture(scope="class")
-    def expected_bounce_factors(self, instance):
+    @classmethod
+    def expected_bounce_factors(cls, instance):
         a = 5.6939501e-01
         b = 8.2206404e-01
         c = 0.0
@@ -216,7 +237,8 @@ class TestRayBlaster:
         return (a, b, c, d, e)
 
     @pytest.fixture(scope="class")
-    def expected_bounces_base(self, get_results_empty, expected_result,
+    @classmethod
+    def expected_bounces_base(cls, get_results_empty, expected_result,
                               instance, reorder_rays,
                               expected_bounce_factors):
         nbounce = 3
@@ -291,7 +313,8 @@ class TestRayBlaster:
         return out
 
     @pytest.fixture(scope="class")
-    def reorder_result(self, reorder_rays):
+    @classmethod
+    def reorder_result(cls, reorder_rays):
 
         def _reorder_result(result):
             if reorder_rays is None:
@@ -304,16 +327,19 @@ class TestRayBlaster:
         return _reorder_result
 
     @pytest.fixture(scope="class")
-    def expected_result_sorted(self, reorder_result, expected_result):
+    @classmethod
+    def expected_result_sorted(cls, reorder_result, expected_result):
         return reorder_result(expected_result)
 
     @pytest.fixture(scope="class")
-    def expected_attributes_sorted(self, reorder_result,
+    @classmethod
+    def expected_attributes_sorted(cls, reorder_result,
                                    expected_attributes):
         return reorder_result(expected_attributes)
 
     @pytest.fixture(scope="class")
-    def expected_bounces_sorted(self, reorder_result, expected_bounces):
+    @classmethod
+    def expected_bounces_sorted(cls, reorder_result, expected_bounces):
         return reorder_result(expected_bounces)
 
     def test_attributes(self, instance, assert_allclose):
@@ -490,8 +516,9 @@ class TestOrthographicRayBlaster(TestRayBlaster):
     instance_type = None
 
     @pytest.fixture(scope="class")
-    def instance_kws_base(self, scene_instance, intersection_width):
-        out = copy.deepcopy(self._instance_kws)
+    @classmethod
+    def instance_kws_base(cls, scene_instance, intersection_width):
+        out = copy.deepcopy(cls._instance_kws)
         out.update(
             width=intersection_width,
             height=intersection_width,
@@ -527,7 +554,8 @@ class TestOrthographicRayBlaster(TestRayBlaster):
             self.cls().forward
 
     @pytest.fixture(scope="class")
-    def periodic_shift(self, instance_base):
+    @classmethod
+    def periodic_shift(cls, instance_base):
         return (
             - (instance_base.width * (1 + 1 / instance_base.nx)
                * instance_base.east)
@@ -536,7 +564,8 @@ class TestOrthographicRayBlaster(TestRayBlaster):
         )
 
     @pytest.fixture(scope="class")
-    def instance_kws(self, instance_type, instance_kws_base,
+    @classmethod
+    def instance_kws(cls, instance_type, instance_kws_base,
                      periodic_shift):
         if instance_type == "base":
             return instance_kws_base
@@ -567,9 +596,10 @@ class TestProjectionRayBlaster(TestRayBlaster):
     _flux_density_result = 0.07103577
 
     @pytest.fixture(scope="class")
-    def instance_kws_base(self, scene_instance, intersection_width,
+    @classmethod
+    def instance_kws_base(cls, scene_instance, intersection_width,
                           fov_width):
-        out = copy.deepcopy(self._instance_kws)
+        out = copy.deepcopy(cls._instance_kws)
         out.update(
             fov_width=fov_width,
             fov_height=fov_width,
@@ -582,7 +612,8 @@ class TestProjectionRayBlaster(TestRayBlaster):
         return out
 
     @pytest.fixture(scope="class")
-    def expected_bounce_factors(self, instance):
+    @classmethod
+    def expected_bounce_factors(cls, instance):
         a = 5.1700723e-01
         b = 8.5598105e-01
         c = 6.2378287e-02
@@ -591,7 +622,8 @@ class TestProjectionRayBlaster(TestRayBlaster):
         return (a, b, c, d, e)
 
     @pytest.fixture(scope="class")
-    def expected_bounces(self, expected_bounces_base):
+    @classmethod
+    def expected_bounces(cls, expected_bounces_base):
         out = copy.deepcopy(expected_bounces_base)
 
         out['tfar'][:, 1] = 1.0018513
@@ -624,15 +656,17 @@ class TestSphericalRayBlaster(TestProjectionRayBlaster):
     _reorder_rays = np.array([3, 2, 0, 1], "i4")
 
     @pytest.fixture(scope="class")
-    def reorder_rays(self, instance_kws):
+    @classmethod
+    def reorder_rays(cls, instance_kws):
         if instance_kws.get('dont_include_center', False):
-            return self._reorder_rays
-        return np.hstack([np.array([self._reorder_rays.shape[0]], "i4"),
-                          self._reorder_rays])
+            return cls._reorder_rays
+        return np.hstack([np.array([cls._reorder_rays.shape[0]], "i4"),
+                          cls._reorder_rays])
 
     @pytest.fixture(scope="class")
-    def instance_kws_base(self, scene_instance, fov_radius):
-        out = copy.deepcopy(self._instance_kws)
+    @classmethod
+    def instance_kws_base(cls, scene_instance, fov_radius):
+        out = copy.deepcopy(cls._instance_kws)
         out.update(
             fov_height=fov_radius,
             forward=-scene_instance.up,
@@ -642,7 +676,8 @@ class TestSphericalRayBlaster(TestProjectionRayBlaster):
         return out
 
     @pytest.fixture(scope="class")
-    def instance_kws(self, instance_type, instance_kws_base):
+    @classmethod
+    def instance_kws(cls, instance_type, instance_kws_base):
         if instance_type == "base":
             return instance_kws_base
         elif instance_type == "with_center":
@@ -663,8 +698,9 @@ class TestSphericalRayBlaster(TestProjectionRayBlaster):
         return out
 
     @pytest.fixture(scope="class")
-    def expected_result(self, instance_kws, intersection_radius):
-        out = copy.deepcopy(self._expected_result)
+    @classmethod
+    def expected_result(cls, instance_kws, intersection_radius):
+        out = copy.deepcopy(cls._expected_result)
         out['tfar'][:] += np.float32(
             np.sqrt(4 + (intersection_radius / 2) ** 2))
         if instance_kws.get('dont_include_center', False):
@@ -681,7 +717,8 @@ class TestSphericalRayBlaster(TestProjectionRayBlaster):
         return out
 
     @pytest.fixture(scope="class")
-    def expected_bounces_sorted(self, reorder_result, expected_bounces,
+    @classmethod
+    def expected_bounces_sorted(cls, reorder_result, expected_bounces,
                                 instance_kws):
         out = reorder_result(expected_bounces)
         if instance_kws.get('dont_include_center', False):
@@ -706,14 +743,16 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
     ])
 
     @pytest.fixture(scope="class")
-    def tolerances(self, tolerances_solar):
+    @classmethod
+    def tolerances(cls, tolerances_solar):
         return tolerances_solar
 
     @pytest.fixture(scope="class")
-    def instance_kws_base(self, location_champaign, altitude_champaign,
+    @classmethod
+    def instance_kws_base(cls, location_champaign, altitude_champaign,
                           datetime_champaign, scene_instance,
                           intersection_width):
-        out = copy.deepcopy(self._instance_kws)
+        out = copy.deepcopy(cls._instance_kws)
         out.update(
             width=intersection_width,
             height=intersection_width,
@@ -729,8 +768,9 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
         return out
 
     @pytest.fixture(scope="class")
-    def expected_result(self):
-        out = copy.deepcopy(self._expected_result)
+    @classmethod
+    def expected_result(cls):
+        out = copy.deepcopy(cls._expected_result)
         out['tfar'] = np.array([
             1.3942306, 1.5534554, 1.394803, 1.5385036
         ], "f4")
@@ -743,7 +783,8 @@ class TestSunRayBlaster(TestOrthographicRayBlaster):
         return out
 
     @pytest.fixture(scope="class")
-    def expected_bounces(self, expected_bounces_base):
+    @classmethod
+    def expected_bounces(cls, expected_bounces_base):
         out = copy.deepcopy(expected_bounces_base)
         out['Ng'][0, 2, :2] = [0.0, 1.6]
         # out['Ng'][0, 4, :2] = [0.0, -1.6]
