@@ -12,9 +12,9 @@ _registry = {
 
 PLANTS = pooch.create(
     path=pooch.os_cache("hothouse"),
-    base_url="https://github.com/MatthewTurk/hothouse/raw/{version}/data/",
+    base_url="https://github.com/cropsinsilico/hothouse/raw/{version}/data/",
     version=__version__,
-    version_dev="master",
+    version_dev="main",
     env="HOTHOUSE_DATA_DIR",
     registry=_registry,
 )
